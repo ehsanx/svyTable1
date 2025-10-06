@@ -1,0 +1,92 @@
+---
+title: "Using svyTable1 for Survey-Weighted Summary Tables"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Using svyTable1 for Survey-Weighted Summary Tables}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+The svyTable1 package provides a straightforward function, svytable1(), to generate descriptive statistics tables ("Table 1") from complex survey data. This vignette demonstrates its use and explains the rationale behind its default "mixed mode" display.
+
+## Understanding the mixed Mode (A Best Practice)
+The svytable1 function defaults to mode = "mixed". This approach is considered a best practice in high-quality survey research for several key reasons rooted in transparency.
+
+When you present a table in mixed mode, you provide two types of information for each categorical variable:
+
+The Unweighted N: This is the actual number of people you interviewed in that category. It tells the reader about the statistical precision of the estimate. A percentage based on 10 people is much less reliable than one based on 1,000 people.
+
+The Weighted Percentage (%): This is an estimate of the proportion of the entire target population that falls into that category, adjusted for the complex survey design (e.g., oversampling of certain groups).
+
+By showing both, you allow your audience to understand the crucial distinction between your sample and the population you are making inferences about. It also reveals the impact of the survey weights—if a group has a small N but a large weighted percentage, it signals that the estimate for that group relies heavily on up-weighting a few individuals, which may affect the stability of the estimate.
+
+## Example: NHANES Cholesterol Data
+
+### 1. Data Preparation
+First, we load the necessary libraries and the example dataset.
+
+```{r setup}
+library(svyTable1)
+library(survey)
+library(dplyr)
+
+# Load the example NHANES data
+load(url("https://raw.githubusercontent.com/ehsanx/EpiMethods/main/Data/surveydata/cholesterolNHANES15part1.RData"))
+```
+
+Next, we'll prepare the data by selecting relevant variables, creating our binary outcome (cholesterol.bin), and ensuring categorical variables are treated as factors.
+
+```{r data-prep}
+# Prepare the data
+anadata <- select(analytic, cholesterol, gender, age, born, race, education, 
+                  married, income, bmi, diabetes, weight, psu, strata) %>%
+  mutate(
+    cholesterol.bin = factor(ifelse(cholesterol < 200, "healthy", "unhealthy"),
+                             levels = c("healthy", "unhealthy")),
+    across(c(gender, born, race, education, married, income, diabetes), as.factor)
+  )
+
+# Create the survey design object
+w.design <- svydesign(id = ~psu, weights = ~weight, strata = ~strata,
+                      nest = TRUE, data = anadata)
+
+# Define the variables for our table
+vars_for_table <- c("gender", "born", "race", "education", "married", 
+                    "income", "bmi", "diabetes", "age")
+```
+
+## 2. Generating Tables
+
+### Mode 1: "mixed" (Default)
+```{r mixed-mode}
+table_mixed <- svytable1(w.design, 
+                         "cholesterol.bin", 
+                         vars_for_table, 
+                         mode = "mixed")
+knitr::kable(table_mixed, caption = "Table 1: Mixed Mode (Unweighted N, Weighted %)")
+```
+
+### Mode 2: "weighted"
+```{r weighted-mode}
+table_weighted <- svytable1(w.design, 
+                            "cholesterol.bin", 
+                            vars_for_table, 
+                            mode = "weighted")
+knitr::kable(table_weighted, caption = "Table 2: Fully Weighted Mode")
+```
+
+### Mode 3: "unweighted"
+```{r unweighted-mode}
+table_unweighted <- svytable1(w.design, 
+                              "cholesterol.bin", 
+                              vars_for_table, 
+                              mode = "unweighted")
+knitr::kable(table_unweighted, caption = "Table 3: Fully Unweighted Mode")
+```

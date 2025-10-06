@@ -1,0 +1,19 @@
+Package: svyTable1
+Title: Create Survey-Weighted Descriptive Statistics Tables
+Version: 0.1.0
+Author: Ehsan Karim <ehsan.karim@gmail.com>
+Maintainer: Ehsan Karim <ehsan.karim@gmail.com>
+Description: A simple tool to create 'Table 1' summaries from complex 
+    survey data, with options for weighted, unweighted, and mixed displays.
+License: MIT + file LICENSE
+Encoding: UTF-8
+RoxygenNote: 7.3.3
+Imports: 
+    survey,
+    stats
+Suggests: 
+    knitr,
+    rmarkdown,
+    dplyr
+VignetteBuilder: knitr
+
