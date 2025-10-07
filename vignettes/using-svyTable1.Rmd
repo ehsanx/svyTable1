@@ -16,77 +16,128 @@ knitr::opts_chunk$set(
 
 The svyTable1 package provides a straightforward function, svytable1(), to generate descriptive statistics tables ("Table 1") from complex survey data. This vignette demonstrates its use and explains the rationale behind its default "mixed mode" display.
 
-## Understanding the mixed Mode (A Best Practice)
+## Understanding the Mixed Mode (A Best Practice)
+
 The svytable1 function defaults to mode = "mixed". This approach is considered a best practice in high-quality survey research for several key reasons rooted in transparency.
 
 When you present a table in mixed mode, you provide two types of information for each categorical variable:
 
-The Unweighted N: This is the actual number of people you interviewed in that category. It tells the reader about the statistical precision of the estimate. A percentage based on 10 people is much less reliable than one based on 1,000 people.
-
-The Weighted Percentage (%): This is an estimate of the proportion of the entire target population that falls into that category, adjusted for the complex survey design (e.g., oversampling of certain groups).
+- **The Unweighted N:** This is the actual number of people you interviewed in that category. It tells the reader about the statistical precision of the estimate. A percentage based on 10 people is much less reliable than one based on 1,000 people.
+- **The Weighted Percentage (%):** This is an estimate of the proportion of the entire target population that falls into that category, adjusted for the complex survey design (e.g., oversampling of certain groups).
 
 By showing both, you allow your audience to understand the crucial distinction between your sample and the population you are making inferences about. It also reveals the impact of the survey weights—if a group has a small N but a large weighted percentage, it signals that the estimate for that group relies heavily on up-weighting a few individuals, which may affect the stability of the estimate.
 
-## Example: NHANES Cholesterol Data
+## Example: Using NHANES Data (2009–2012)
+
+This section demonstrates how to use svytable1 with the NHANESraw dataset, which contains missing values.
 
 ### 1. Data Preparation
-First, we load the necessary libraries and the example dataset.
 
-```{r setup}
+```{r}
 library(svyTable1)
 library(survey)
 library(dplyr)
+library(NHANES)
 
-# Load the example NHANES data
-load(url("https://raw.githubusercontent.com/ehsanx/EpiMethods/main/Data/surveydata/cholesterolNHANES15part1.RData"))
-```
+# Load the raw NHANES data (2009-2012)
+data(NHANESraw)
 
-Next, we'll prepare the data by selecting relevant variables, creating our binary outcome (cholesterol.bin), and ensuring categorical variables are treated as factors.
-
-```{r data-prep}
-# Prepare the data
-anadata <- select(analytic, cholesterol, gender, age, born, race, education, 
-                  married, income, bmi, diabetes, weight, psu, strata) %>%
+# Prepare data for adults, keeping NAs
+nhanes_adults_with_na <- NHANESraw %>%
+  filter(Age >= 20) %>%
   mutate(
-    cholesterol.bin = factor(ifelse(cholesterol < 200, "healthy", "unhealthy"),
-                             levels = c("healthy", "unhealthy")),
-    across(c(gender, born, race, education, married, income, diabetes), as.factor)
+    ObeseStatus = factor(ifelse(BMI >= 30, "Obese", "Not Obese"),
+                         levels = c("Not Obese", "Obese"))
   )
 
-# Create the survey design object
-w.design <- svydesign(id = ~psu, weights = ~weight, strata = ~strata,
-                      nest = TRUE, data = anadata)
-
-# Define the variables for our table
-vars_for_table <- c("gender", "born", "race", "education", "married", 
-                    "income", "bmi", "diabetes", "age")
+# Create the survey design object on the data that still contains NAs
+adult_design_with_na <- svydesign(
+  id = ~SDMVPSU,
+  strata = ~SDMVSTRA,
+  weights = ~WTMEC2YR,
+  nest = TRUE,
+  data = nhanes_adults_with_na
+)
 ```
 
-## 2. Generating Tables
+### 2. Generating Tables
 
-### Mode 1: "mixed" (Default)
-```{r mixed-mode}
-table_mixed <- svytable1(w.design, 
-                         "cholesterol.bin", 
-                         vars_for_table, 
-                         mode = "mixed")
-knitr::kable(table_mixed, caption = "Table 1: Mixed Mode (Unweighted N, Weighted %)")
+#### Example A: Handling Variables with Missing Data
+
+This is the primary use case. We select a range of variables, some of which are known to have missing data (HHIncome, TotChol, SmokeNow). The svytable1 function will process each variable independently, automatically detecting and reporting the extent of missingness for each one.
+
+```{r}
+# Define a set of variables, some with expected missing values
+vars_with_missing <- c(
+  "Age", 
+  "Gender", 
+  "Race1", 
+  "Education",
+  "HHIncome", 
+  "TotChol",       # Numeric, has NAs
+  "SleepHrsNight", # Numeric, has NAs
+  "SmokeNow"       # Categorical, has many NAs
+)
+
+# Generate the table using the full design object (with NAs)
+table_with_missing <- svytable1(
+  design = adult_design_with_na, 
+  strata_var = "ObeseStatus", 
+  table_vars = vars_with_missing
+)
+
+# Display the table
+knitr::kable(
+  table_with_missing, 
+  caption = "Table 1: Summarizing Variables with Missing Data"
+)
 ```
 
-### Mode 2: "weighted"
-```{r weighted-mode}
-table_weighted <- svytable1(w.design, 
-                            "cholesterol.bin", 
-                            vars_for_table, 
-                            mode = "weighted")
-knitr::kable(table_weighted, caption = "Table 2: Fully Weighted Mode")
+Notice that the output table includes a "Missing" column (because ObeseStatus had missing values) and "Missing" rows for variables like Education, HHIncome, TotChol, and SmokeNow.
+
+#### Example B: Summarizing Complete Data
+
+If your analysis requires a dataset with no missing values for a specific set of variables, you can perform a complete-case analysis before creating your table. Here, we use `tidyr::drop_na()` to create a smaller, complete dataset.
+
+```{r}
+library(tidyr) # Loaded here as it's specific to this approach
+
+# Define a set of core variables for a complete-case analysis
+vars_for_complete_table <- c(
+  "Age", 
+  "Gender", 
+  "Race1",
+  "BPSysAve",
+  "Pulse",
+  "BMI" # Must be included for the strata and to remove its own NAs
+)
+
+# Create a new, complete-case data frame
+nhanes_adults_complete <- nhanes_adults_with_na %>%
+  drop_na(all_of(vars_for_complete_table))
+
+# Create a new design object based on this complete-case data
+adult_design_complete <- svydesign(
+  id = ~SDMVPSU,
+  strata = ~SDMVSTRA,
+  weights = ~WTMEC2YR,
+  nest = TRUE,
+  data = nhanes_adults_complete
+)
+
+# Generate the table
+# Note: The input data is now complete for this set of variables
+table_without_missing <- svytable1(
+  design = adult_design_complete, 
+  strata_var = "ObeseStatus", 
+  table_vars = c("Age", "Gender", "Race1", "BPSysAve", "Pulse")
+)
+
+# Display the table
+knitr::kable(
+  table_without_missing, 
+  caption = "Table 2: Summarizing Variables with No Missing Data"
+)
 ```
 
-### Mode 3: "unweighted"
-```{r unweighted-mode}
-table_unweighted <- svytable1(w.design, 
-                              "cholesterol.bin", 
-                              vars_for_table, 
-                              mode = "unweighted")
-knitr::kable(table_unweighted, caption = "Table 3: Fully Unweighted Mode")
-```
+Notice this table is "clean"—it has no "Missing" rows or columns because the input data was complete for the selected variables.
