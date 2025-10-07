@@ -1,6 +1,6 @@
 Package: svyTable1
 Title: Create Survey-Weighted Descriptive Statistics Tables
-Version: 0.1.0
+Version: 0.2.0
 Author: Ehsan Karim <ehsan.karim@gmail.com>
 Maintainer: Ehsan Karim <ehsan.karim@gmail.com>
 Description: A simple tool to create 'Table 1' summaries from complex 
@@ -16,4 +16,3 @@ Suggests:
     rmarkdown,
     dplyr
 VignetteBuilder: knitr
-
