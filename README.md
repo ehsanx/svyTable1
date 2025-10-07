@@ -41,7 +41,8 @@ with:
 
 ``` r
 # install.packages("devtools")
-devtools::install_github("ehsanx/svyTable1")
+# Downloads from GitHub and installs, building vignettes
+devtools::install_github("ehsanx/svyTable1", build_vignettes = TRUE)
 ```
 
 ------------------------------------------------------------------------
