@@ -1,21 +1,15 @@
-#' @title Create a Survey-Weighted Descriptive Statistics Table
+#' Create a Survey-Weighted Descriptive Statistics Table
 #'
 #' @description
 #' Generates a "Table 1" of descriptive statistics for complex survey data,
 #' stratified by an outcome variable. It supports different reporting modes and
-#' optional comma formatting for large numbers. For subpopulation analysis, it is
-#' recommended to use `subset()` on the survey design object before passing it
-#' to this function.
+#' optional comma formatting for large numbers.
 #'
 #' @param design A survey design object created by the `survey` package.
 #' @param strata_var A string with the name of the stratification variable.
 #' @param table_vars A character vector of variable names to summarize.
-#' @param mode A string specifying the output type:
-#'   "mixed" (default): Unweighted n and weighted % or mean(SD).
-#'   "weighted": Weighted n/mean and weighted %/SD.
-#'   "unweighted": Unweighted n/mean and unweighted %/SD.
-#' @param commas Logical; if TRUE (default), large numbers in counts are
-#'   formatted with commas for readability.
+#' @param mode A string specifying the output type: "mixed" (default), "weighted", or "unweighted".
+#' @param commas Logical; if TRUE (default), large numbers in counts are formatted with commas.
 #'
 #' @return A data.frame formatted as a descriptive statistics table.
 #'

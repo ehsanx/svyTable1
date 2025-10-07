@@ -14,5 +14,7 @@ Imports:
 Suggests: 
     knitr,
     rmarkdown,
-    dplyr
+    dplyr,
+    NHANES,
+    tidyr
 VignetteBuilder: knitr

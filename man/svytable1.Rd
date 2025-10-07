@@ -13,13 +13,9 @@ svytable1(design, strata_var, table_vars, mode = "mixed", commas = TRUE)
 
 \item{table_vars}{A character vector of variable names to summarize.}
 
-\item{mode}{A string specifying the output type:
-"mixed" (default): Unweighted n and weighted % or mean(SD).
-"weighted": Weighted n/mean and weighted %/SD.
-"unweighted": Unweighted n/mean and unweighted %/SD.}
+\item{mode}{A string specifying the output type: "mixed" (default), "weighted", or "unweighted".}
 
-\item{commas}{Logical; if TRUE (default), large numbers in counts are
-formatted with commas for readability.}
+\item{commas}{Logical; if TRUE (default), large numbers in counts are formatted with commas.}
 }
 \value{
 A data.frame formatted as a descriptive statistics table.
@@ -27,7 +23,5 @@ A data.frame formatted as a descriptive statistics table.
 \description{
 Generates a "Table 1" of descriptive statistics for complex survey data,
 stratified by an outcome variable. It supports different reporting modes and
-optional comma formatting for large numbers. For subpopulation analysis, it is
-recommended to use `subset()` on the survey design object before passing it
-to this function.
+optional comma formatting for large numbers.
 }
