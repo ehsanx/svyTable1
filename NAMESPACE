@@ -2,7 +2,10 @@
 
 export(svytable1)
 import(stats)
+importFrom(survey,SE)
+importFrom(survey,degf)
 importFrom(survey,svyby)
+importFrom(survey,svyciprop)
 importFrom(survey,svymean)
 importFrom(survey,svytable)
 importFrom(survey,svyvar)

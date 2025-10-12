@@ -7,18 +7,18 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r, include=FALSE}
+```{r setup}
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>"
 )
 ```
 
-The svyTable1 package provides a straightforward function, svytable1(), to generate descriptive statistics tables ("Table 1") from complex survey data. This vignette demonstrates its use and explains the rationale behind its default "mixed mode" display.
+The svyTable1 package provides a straightforward function, `svytable1()`, to generate descriptive statistics tables ("Table 1") from complex survey data. This vignette demonstrates its use, explains its default "mixed mode" display, and details its advanced reliability checking features.
 
 ## Understanding the Mixed Mode (A Best Practice)
 
-The svytable1 function defaults to mode = "mixed". This approach is considered a best practice in high-quality survey research for several key reasons rooted in transparency.
+The `svytable1` function defaults to `mode = "mixed"`. This approach is considered a best practice in high-quality survey research for several key reasons rooted in transparency.
 
 When you present a table in mixed mode, you provide two types of information for each categorical variable:
 
@@ -28,8 +28,6 @@ When you present a table in mixed mode, you provide two types of information for
 By showing both, you allow your audience to understand the crucial distinction between your sample and the population you are making inferences about. It also reveals the impact of the survey weights—if a group has a small N but a large weighted percentage, it signals that the estimate for that group relies heavily on up-weighting a few individuals, which may affect the stability of the estimate.
 
 ## Example: Using NHANES Data (2009–2012)
-
-This section demonstrates how to use svytable1 with the NHANESraw dataset, which contains missing values.
 
 ### 1. Data Preparation
 
@@ -64,8 +62,6 @@ adult_design_with_na <- svydesign(
 
 #### Example A: Handling Variables with Missing Data
 
-This is the primary use case. We select a range of variables, some of which are known to have missing data (HHIncome, TotChol, SmokeNow). The svytable1 function will process each variable independently, automatically detecting and reporting the extent of missingness for each one.
-
 ```{r}
 # Define a set of variables, some with expected missing values
 vars_with_missing <- c(
@@ -74,9 +70,9 @@ vars_with_missing <- c(
   "Race1", 
   "Education",
   "HHIncome", 
-  "TotChol",       # Numeric, has NAs
-  "SleepHrsNight", # Numeric, has NAs
-  "SmokeNow"       # Categorical, has many NAs
+  "TotChol",       
+  "SleepHrsNight", 
+  "SmokeNow"       
 )
 
 # Generate the table using the full design object (with NAs)
@@ -93,14 +89,10 @@ knitr::kable(
 )
 ```
 
-Notice that the output table includes a "Missing" column (because ObeseStatus had missing values) and "Missing" rows for variables like Education, HHIncome, TotChol, and SmokeNow.
-
 #### Example B: Summarizing Complete Data
 
-If your analysis requires a dataset with no missing values for a specific set of variables, you can perform a complete-case analysis before creating your table. Here, we use `tidyr::drop_na()` to create a smaller, complete dataset.
-
 ```{r}
-library(tidyr) # Loaded here as it's specific to this approach
+library(tidyr)
 
 # Define a set of core variables for a complete-case analysis
 vars_for_complete_table <- c(
@@ -109,7 +101,7 @@ vars_for_complete_table <- c(
   "Race1",
   "BPSysAve",
   "Pulse",
-  "BMI" # Must be included for the strata and to remove its own NAs
+  "BMI"
 )
 
 # Create a new, complete-case data frame
@@ -126,7 +118,6 @@ adult_design_complete <- svydesign(
 )
 
 # Generate the table
-# Note: The input data is now complete for this set of variables
 table_without_missing <- svytable1(
   design = adult_design_complete, 
   strata_var = "ObeseStatus", 
@@ -140,4 +131,99 @@ knitr::kable(
 )
 ```
 
-Notice this table is "clean"—it has no "Missing" rows or columns because the input data was complete for the selected variables.
+This table is "clean": it has no "Missing" rows or columns because the input data was complete for the selected variables.
+
+## 3. Checking Estimate Reliability (NCHS Standards)
+
+When you publish research, it's crucial to ensure your results are statistically trustworthy. An estimate based on a very small number of people, for example, can be misleading. To help with this, `svytable1` can automatically apply the **NCHS Data Presentation Standards for Proportions**, which are a set of rules designed to prevent the publication of unreliable estimates.
+
+You can activate this feature using two arguments:
+
+- **`reliability_checks = TRUE`**: This tells the function to perform the checks. Any estimate that fails is replaced with an asterisk (*) in the final table.
+- **`return_metrics = TRUE`**: This is highly recommended. It tells the function to return a second table—a detailed report card—that shows exactly why an estimate passed or failed.
+
+### Example C: Generating a Table with Reliability Checks
+
+Let's run our analysis again with the reliability checks turned on.
+
+```{r}
+# Generate the table and the reliability metrics
+results_list <- svytable1(
+  design = adult_design_with_na, 
+  strata_var = "ObeseStatus", 
+  table_vars = vars_with_missing,
+  reliability_checks = TRUE,
+  return_metrics = TRUE
+)
+
+# Display the formatted table with suppressed estimates
+knitr::kable(
+  results_list$formatted_table, 
+  caption = "Table 3: Table with NCHS Reliability Checks Applied"
+)
+```
+
+You'll notice asterisks (*) in the table. These are estimates that the function has flagged as unreliable based on the NCHS rules. To see why, we can look at the metrics table.
+
+```{r}
+# Display the detailed reliability metrics
+knitr::kable(
+  results_list$reliability_metrics, 
+  caption = "Detailed Reliability Metrics for Each Estimate"
+)
+```
+
+## Interpreting the Reliability Metrics
+
+The second table, `reliability_metrics`, is the "report card" for each estimate. The `suppressed` column gives the final verdict (`TRUE` or `FALSE`), and the `fail_...` columns tell you exactly which rule was broken.
+
+Here’s what each check means in simple terms:
+
+### `fail_n_30` (Sample Size Rule)
+
+**What it is:** Checks if the actual number of people surveyed for a specific category (n) is at least 30.  
+**Why it matters:** Estimates based on fewer than 30 individuals are too unstable to be reliable.
+
+### `fail_eff_n_30` (Effective Sample Size Rule)
+
+**What it is:** Adjusts for survey weights. The "effective" sample size is the equivalent simple random sample size with the same precision.  
+**Rule:** If this effective sample size is less than 30, the estimate is flagged.
+
+### `fail_df_8` (Degrees of Freedom Rule)
+
+**What it is:** Measures how complex your survey design is.  
+**Why it matters:** If the degrees of freedom are less than 8, the uncertainty estimate is unreliable.
+
+### `fail_ciw_30` & `fail_rciw_130` (Confidence Interval Width Rules)
+
+**What it is:** Evaluates the width of the confidence interval (CI) — the range of uncertainty around your estimate.  
+**Why it matters:** Wide CIs indicate poor precision. These rules flag estimates with CIs too wide to be meaningful.
+
+## Checking Reliability Using Relative Standard Error (RSE)
+
+### fail_rse_30 (Relative Standard Error)
+
+**What it is:**  
+The *Relative Standard Error (RSE)* is a measure of an estimate's imprecision relative to its size, calculated as:
+
+\[
+RSE = \frac{Standard\ Error}{Estimate} \times 100
+\]
+
+An RSE of **30%** has historically been a common cutoff for determining if an estimate is unreliable.
+
+---
+
+**What it's useful for:**
+
+- **Checking Reliability of Means:**  
+  RSE is the *current recommended reliability check for means*.  
+  According to the NCHS guideline, an estimated mean with an **RSE ≥ 30%** should be identified as unreliable.  
+  The `svytable1` function automates this check for all numeric variables.
+
+- **Historical Comparison:**  
+  RSE allows comparison with older studies or agency standards that still apply the “RSE < 30%” rule for proportions.
+
+- **General Diagnostic:**  
+  It provides a quick, familiar *rule of thumb* to gauge the stability of an estimate, complementing the more modern NCHS checks for proportions.
+

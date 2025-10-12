@@ -4,10 +4,18 @@
 \alias{svytable1}
 \title{Create a Survey-Weighted Descriptive Statistics Table}
 \usage{
-svytable1(design, strata_var, table_vars, mode = "mixed", commas = TRUE)
+svytable1(
+  design,
+  strata_var,
+  table_vars,
+  mode = "mixed",
+  commas = TRUE,
+  reliability_checks = FALSE,
+  return_metrics = FALSE
+)
 }
 \arguments{
-\item{design}{A survey design object created by the `survey` package.}
+\item{design}{A survey design object created by the survey package.}
 
 \item{strata_var}{A string with the name of the stratification variable.}
 
@@ -16,12 +24,39 @@ svytable1(design, strata_var, table_vars, mode = "mixed", commas = TRUE)
 \item{mode}{A string specifying the output type: "mixed" (default), "weighted", or "unweighted".}
 
 \item{commas}{Logical; if TRUE (default), large numbers in counts are formatted with commas.}
+
+\item{reliability_checks}{Logical; if TRUE, performs reliability checks. Unreliable
+estimates are replaced with an asterisk (*). The rules are based on NCHS guidelines.
+\itemize{
+  \item{\strong{For proportions (categorical variables)}, an estimate is suppressed if it meets ANY of the following criteria:
+    \itemize{
+      \item{Unweighted Sample Size < 30: The actual number of survey participants in the cell is too small to produce a stable estimate.}
+      \item{Effective Sample Size < 30: After accounting for the complex survey design, the estimate's precision is equivalent to that from a simple random sample of fewer than 30 people.}
+      \item{Degrees of Freedom < 8: The variance estimate is itself unstable, making the entire estimate unreliable.}
+      \item{Confidence Interval Width >= 30\%: The 95\% confidence interval is 30 percentage points wide or wider, indicating extreme imprecision.}
+      \item{Conditional Relative CI Width > 130\%: If the confidence interval width is between 5\% and 30\%, it is also checked to see if it is excessively large \emph{relative} to the estimate itself.}
+    }
+  }
+  \item{\strong{For means (numeric variables)}, an estimate is suppressed if:
+    \itemize{
+      \item{Relative Standard Error (RSE) >= 30\%: The standard error is 30\% or more of the mean's value, indicating high imprecision.}
+    }
+  }
+}
+Defaults to FALSE.}
+
+\item{return_metrics}{Logical; if TRUE and `reliability_checks` is also TRUE, the function
+returns a list containing the formatted table and a detailed data frame of the
+reliability metrics. This includes the RSE and specific TRUE/FALSE columns
+(e.g., `fail_n_30`, `fail_eff_n_30`) for each suppression rule. Defaults to FALSE.}
 }
 \value{
-A data.frame formatted as a descriptive statistics table.
+If `return_metrics` is FALSE (default), returns a data.frame. If TRUE,
+  returns a list with two elements: `formatted_table` and `reliability_metrics`.
 }
 \description{
 Generates a "Table 1" of descriptive statistics for complex survey data,
-stratified by an outcome variable. It supports different reporting modes and
-optional comma formatting for large numbers.
+stratified by an outcome variable. It supports different reporting modes,
+optional comma formatting, and optional reliability checks based on NCHS
+Data Presentation Standards.
 }
