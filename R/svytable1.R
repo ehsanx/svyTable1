@@ -7,7 +7,7 @@
 #' Data Presentation Standards.
 #'
 #' @param design A survey design object created by the survey package.
-#' @param strata_var A string with the name of the stratification variable.
+#' @param strata_var A string with the name of the stratification variable. If this variable contains NA values, they will be automatically grouped into a separate 'Missing' stratum in the output table.
 #' @param table_vars A character vector of variable names to summarize.
 #' @param mode A string specifying the output type: "mixed" (default), "weighted", or "unweighted".
 #' @param commas Logical; if TRUE (default), large numbers in counts are formatted with commas.
@@ -229,7 +229,7 @@ svytable1 <- function(design, strata_var, table_vars,
               ci_low <- metrics$ci_low[level_index]; ci_high <- metrics$ci_high[level_index]
               pct_val <- metrics$prop[level_index]; se <- metrics$se[level_index]
 
-              effective_n <- if(!is.na(deff) && deff > 0) n / deff else 0
+              effective_n <- if(!is.na(deff)) n / max(1, deff) else 0
               ciw <- ci_high - ci_low
               rciw <- if(!is.na(pct_val) && pct_val > 0) (ciw / pct_val) * 100 else Inf
               rse <- if(!is.na(pct_val) && pct_val > 0) (se / pct_val) * 100 else Inf

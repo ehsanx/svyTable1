@@ -91,6 +91,8 @@ knitr::kable(
 )
 ```
 
+It's important to note that `svytable1()` automatically detects missing (`NA`) values in the stratification variable. It treats these observations as a distinct group, creating a separate 'Missing' column in the table to ensure all data is accounted for.
+
 #### Example B: Summarizing Complete Data
 
 ```{r}
@@ -231,13 +233,13 @@ An RSE of **30%** has historically been a common cutoff for determining if an es
 
 ## Extending Reliability Checks to Regression Models
 
-While `svytable1()` focuses on descriptive statistics, a common next step in analysis is fitting a regression model. Assessing the reliability of regression coefficients is just as important as checking descriptive estimates. To support this workflow, the `svyTable1` package now includes `svyglmdiag()`, a helper function for diagnosing the stability of coefficients from `svyglm()` models.
+While `svytable1()` focuses on descriptive statistics, a common next step in analysis is fitting a regression model. Assessing the reliability of regression coefficients is just as important as checking descriptive estimates. To support this workflow, the `svyTable1` package now includes `svydiag()`, a helper function for diagnosing the stability of coefficients from `svyglm()` models.
 
 The function provides key metrics recommended for this purpose, such as the **p-value**, **standard error**, and **confidence interval width**. It also includes the Relative Standard Error (RSE) for comparison, though it is not the recommended primary check for regression coefficients due to its tendency to be misleading for estimates near zero.
 
 ### Example: Running Diagnostics on a Survey-Weighted Model
 
-Let's fit a logistic regression model to predict obesity (`ObeseStatus`) using the complete-case NHANES data we prepared earlier. We'll then use `svyglmdiag()` to assess the reliability of our model's coefficients.
+Let's fit a logistic regression model to predict obesity (`ObeseStatus`) using the complete-case NHANES data we prepared earlier. We'll then use `svydiag()` to assess the reliability of our model's coefficients.
 
 ```{r reg-diagnostics}
 # 1. Fit a survey-weighted logistic regression model
@@ -249,7 +251,7 @@ fit_obesity <- svyglm(
 )
 
 # 2. Run the diagnostics function on the fitted model
-diagnostics_table <- svyglmdiag(fit_obesity)
+diagnostics_table <- svydiag(fit_obesity)
 
 # 3. Display the diagnostics table
 knitr::kable(
@@ -261,7 +263,7 @@ knitr::kable(
 
 ## Interpreting the Regression Diagnostics Table
 
-The output from `svyglmdiag()` provides a clear, term-by-term *report card* for your regression model. It helps you evaluate the reliability and interpretability of each coefficient.
+The output from `svydiag()` provides a clear, term-by-term *report card* for your regression model. It helps you evaluate the reliability and interpretability of each coefficient.
 
 ### Key Columns
 
@@ -283,7 +285,7 @@ The output from `svyglmdiag()` provides a clear, term-by-term *report card* for 
 
 ---
 
-Overall, `svyglmdiag()` complements traditional regression output by making it easier to identify which predictors are both statistically meaningful and statistically stable under complex survey design.
+Overall, `svydiag()` complements traditional regression output by making it easier to identify which predictors are both statistically meaningful and statistically stable under complex survey design.
 
 
 ## References

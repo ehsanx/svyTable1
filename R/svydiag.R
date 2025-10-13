@@ -1,9 +1,9 @@
 #' Perform Reliability Diagnostics on Survey Regression Models
 #'
 #' @description
-#' This function takes a fitted survey regression model object (e.g., from `svyglm`)
-#' and produces a tibble with key reliability and diagnostic metrics for each
-#' coefficient.
+#' This function takes a fitted survey regression model object (e.g., from `svyglm`
+#' or `svycoxph`) and produces a tibble with key reliability and diagnostic
+#' metrics for each coefficient.
 #'
 #' @details
 #' The output provides a comprehensive overview to help assess the stability and
@@ -21,7 +21,7 @@
 #' even if precisely estimated. It is better to rely on the standard error,
 #' p-value, and confidence interval width for reliability assessment.
 #'
-#' @param fit A fitted model object, typically of class `svyglm`.
+#' @param fit A fitted model object from the `survey` package, such as `svyglm` or `svycoxph`.
 #' @param p_threshold A numeric value (between 0 and 1) for the significance threshold. Defaults to `0.05`.
 #' @param rse_threshold A numeric value for flagging high Relative Standard Error (RSE). Defaults to `30`.
 #'
@@ -40,9 +40,9 @@
 #'   \item \code{is_rse_high}: A logical flag, `TRUE` if `RSE_percent` is greater than or equal to `rse_threshold`.
 #' }
 #'
-#' @importFrom dplyr mutate bind_cols select
-#' @importFrom tibble as_tibble
-#' @importFrom stats confint setNames
+#' @importFrom dplyr mutate select
+#' @importFrom tibble tibble
+#' @importFrom stats confint coef vcov
 #'
 #' @export
 #'
@@ -82,8 +82,8 @@
 #'     family = quasibinomial()
 #'   )
 #'
-#'   # 3. Get the reliability diagnostics table
-#'   diagnostics_table <- svyglmdiag(fit)
+#'   # 3. Get the reliability diagnostics table using the new function
+#'   diagnostics_table <- svydiag(fit)
 #'
 #'   # Print the resulting table
 #'   print(diagnostics_table)
@@ -96,25 +96,31 @@
 #'   }
 #' }
 
-svyglmdiag <- function(fit, p_threshold = 0.05, rse_threshold = 30) {
+svydiag <- function(fit, p_threshold = 0.05, rse_threshold = 30) {
 
-  # --- Input validation ---
-  if (!inherits(fit, "svyglm")) {
-    warning("This function is designed for 'svyglm' objects. Results may be unexpected.")
-  }
+  # 1. Robustly extract key model components using accessor functions
+  s_fit <- summary(fit)
+  estimates <- stats::coef(fit)
+  se <- sqrt(diag(stats::vcov(fit)))
+  conf_int <- stats::confint(fit)
 
-  # 1. Get the standard model summary and confidence intervals
-  summary_fit <- summary(fit)
-  conf_int_fit <- stats::confint(fit)
+  # P-values are most reliably extracted from the summary coefficient table.
+  # This assumes the p-value is the last column, which is standard for most
+  # survey models (svyglm, svycoxph, etc.).
+  p_vals <- s_fit$coefficients[, ncol(s_fit$coefficients)]
 
   # 2. Combine these into a single, informative table
-  reliability_df <- tibble::as_tibble(summary_fit$coefficients, rownames = "Term")
-  names(reliability_df) <- c("Term", "Estimate", "SE", "t.value", "p.value")
+  reliability_df <- tibble::tibble(
+    Term = names(estimates),
+    Estimate = estimates,
+    SE = se,
+    p.value = p_vals,
+    CI_Lower = conf_int[, 1],
+    CI_Upper = conf_int[, 2]
+  )
 
-  # 3. Add CIs, calculate metrics, and add flags
+  # 3. Calculate derived metrics, add flags, and finalize the output
   reliability_df <- reliability_df %>%
-    dplyr::bind_cols(tibble::as_tibble(conf_int_fit) %>%
-                       stats::setNames(c("CI_Lower", "CI_Upper"))) %>%
     dplyr::mutate(
       RSE_percent = (SE / abs(Estimate)) * 100,
       CI_Width = CI_Upper - CI_Lower,

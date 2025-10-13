@@ -17,7 +17,7 @@ svytable1(
 \arguments{
 \item{design}{A survey design object created by the survey package.}
 
-\item{strata_var}{A string with the name of the stratification variable.}
+\item{strata_var}{A string with the name of the stratification variable. If this variable contains NA values, they will be automatically grouped into a separate 'Missing' stratum in the output table.}
 
 \item{table_vars}{A character vector of variable names to summarize.}
 

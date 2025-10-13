@@ -15,7 +15,7 @@ The package was developed to simplify a common task in epidemiology and public h
 - **Built-in Reliability Checks:** Automatically apply NCHS Data Presentation Standards for Proportions to flag or suppress unreliable estimates.
 - **Flexible Output Modes:** Easily switch between `"mixed"`, `"weighted"`, and `"unweighted"` summaries.
 - **Readability:** Option to format large numbers with commas for improved readability.
-- **Regression Diagnostics**: Includes the `svyglmdiag()` helper function to assess the reliability of coefficients from `svyglm()` models.
+- **Regression Diagnostics**: Includes the `svydiag()` helper function to assess the reliability of coefficients from `svyglm()` models.
 
 ---
 
@@ -25,7 +25,8 @@ You can install the development version of **svyTable1** from GitHub with:
 
 ```r
 # install.packages("devtools")
-devtools::install_github("ehsanx/svyTable1", build_vignettes = TRUE)
+# In README.md
+devtools::install_github("ehsanx/svyTable1", build_vignettes = TRUE, dependencies = TRUE)
 ```
 
 ---
@@ -163,7 +164,7 @@ Example `svytable1` output table from Example C with the reliability checks appl
 
 #### Example D: Reliability Checks for Regression Models
 
-Beyond descriptive tables, the package provides `svyglmdiag()` to assess the reliability of coefficients from a survey-weighted regression model. It calculates key metrics like p-values, standard errors, and confidence interval widths.
+Beyond descriptive tables, the package provides `svydiag()` to assess the reliability of coefficients from a survey-weighted regression model. It calculates key metrics like p-values, standard errors, and confidence interval widths.
 
 ```r
 # 1. Fit a logistic regression model using the complete-case design
@@ -174,7 +175,7 @@ fit_obesity <- svyglm(
 )
 
 # 2. Get the reliability diagnostics table for the model
-diagnostics_table <- svyglmdiag(fit_obesity)
+diagnostics_table <- svydiag(fit_obesity)
 
 # 3. Display the diagnostics table
 knitr::kable(
@@ -187,7 +188,7 @@ knitr::kable(
 
 ## 📊 Example Output 2
 
-Example output table for Example D, which demonstrates the `svyglmdiag()` function.
+Example output table for Example D, which demonstrates the `svydiag()` function.
 
 |Term | Estimate| SE| p.value|is_significant | CI_Lower| CI_Upper| CI_Width| RSE_percent|is_rse_high |
 |:---|---:|---:|---:|:---|---:|---:|---:|---:|:---|
