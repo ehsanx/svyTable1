@@ -5,6 +5,8 @@ vignette: >
   %\VignetteIndexEntry{Using svyTable1 for Survey-Weighted Summary Tables}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
+bibliography: references.bib
+link-citations: yes
 ---
 
 ```{r setup}
@@ -22,8 +24,8 @@ The `svytable1` function defaults to `mode = "mixed"`. This approach is consider
 
 When you present a table in mixed mode, you provide two types of information for each categorical variable:
 
-- **The Unweighted N:** This is the actual number of people you interviewed in that category. It tells the reader about the statistical precision of the estimate. A percentage based on 10 people is much less reliable than one based on 1,000 people.
-- **The Weighted Percentage (%):** This is an estimate of the proportion of the entire target population that falls into that category, adjusted for the complex survey design (e.g., oversampling of certain groups).
+- **The Unweighted N:** This is the actual number of people you interviewed in that category. It tells the reader about the statistical precision of the estimate [@seidenberg2023preferred]. A percentage based on 10 people is much less reliable than one based on 1,000 people.
+- **The Weighted Percentage (%):** This is an estimate of the proportion of the entire target population that falls into that category, adjusted for the complex survey design (e.g., oversampling of certain groups) [@national1994plan].
 
 By showing both, you allow your audience to understand the crucial distinction between your sample and the population you are making inferences about. It also reveals the impact of the survey weights—if a group has a small N but a large weighted percentage, it signals that the estimate for that group relies heavily on up-weighting a few individuals, which may affect the stability of the estimate.
 
@@ -133,7 +135,7 @@ knitr::kable(
 
 This table is "clean": it has no "Missing" rows or columns because the input data was complete for the selected variables.
 
-## 3. Checking Estimate Reliability (NCHS Standards)
+## 3. Checking Estimate Reliability for Proportions (NCHS Standards)
 
 When you publish research, it's crucial to ensure your results are statistically trustworthy. An estimate based on a very small number of people, for example, can be misleading. To help with this, `svytable1` can automatically apply the **NCHS Data Presentation Standards for Proportions**, which are a set of rules designed to prevent the publication of unreliable estimates.
 
@@ -163,7 +165,7 @@ knitr::kable(
 )
 ```
 
-You'll notice asterisks (*) in the table. These are estimates that the function has flagged as unreliable based on the NCHS rules. To see why, we can look at the metrics table.
+You'll notice asterisks (*) in the table. These are estimates that the function has flagged as unreliable based on the NCHS rules [@nhanes_reliability_estimates]. To see why, we can look at the metrics table.
 
 ```{r}
 # Display the detailed reliability metrics
@@ -199,7 +201,7 @@ Here’s what each check means in simple terms:
 **What it is:** Evaluates the width of the confidence interval (CI) — the range of uncertainty around your estimate.  
 **Why it matters:** Wide CIs indicate poor precision. These rules flag estimates with CIs too wide to be meaningful.
 
-## Checking Reliability Using Relative Standard Error (RSE)
+## 4. Checking Estimate Reliability for Means (NCHS Standards)
 
 ### fail_rse_30 (Relative Standard Error)
 
@@ -217,7 +219,7 @@ An RSE of **30%** has historically been a common cutoff for determining if an es
 **What it's useful for:**
 
 - **Checking Reliability of Means:**  
-  RSE is the *current recommended reliability check for means*.  
+  RSE is the *current recommended reliability check for means* [@nhanes_reliability_estimates].  
   According to the NCHS guideline, an estimated mean with an **RSE ≥ 30%** should be identified as unreliable.  
   The `svytable1` function automates this check for all numeric variables.
 
@@ -227,3 +229,58 @@ An RSE of **30%** has historically been a common cutoff for determining if an es
 - **General Diagnostic:**  
   It provides a quick, familiar *rule of thumb* to gauge the stability of an estimate, complementing the more modern NCHS checks for proportions.
 
+## Extending Reliability Checks to Regression Models
+
+While `svytable1()` focuses on descriptive statistics, a common next step in analysis is fitting a regression model. Assessing the reliability of regression coefficients is just as important as checking descriptive estimates. To support this workflow, the `svyTable1` package now includes `svyglmdiag()`, a helper function for diagnosing the stability of coefficients from `svyglm()` models.
+
+The function provides key metrics recommended for this purpose, such as the **p-value**, **standard error**, and **confidence interval width**. It also includes the Relative Standard Error (RSE) for comparison, though it is not the recommended primary check for regression coefficients due to its tendency to be misleading for estimates near zero.
+
+### Example: Running Diagnostics on a Survey-Weighted Model
+
+Let's fit a logistic regression model to predict obesity (`ObeseStatus`) using the complete-case NHANES data we prepared earlier. We'll then use `svyglmdiag()` to assess the reliability of our model's coefficients.
+
+```{r reg-diagnostics}
+# 1. Fit a survey-weighted logistic regression model
+# We use the 'adult_design_complete' object from Example B
+fit_obesity <- svyglm(
+  ObeseStatus ~ Age + Gender + Race1,
+  design = adult_design_complete,
+  family = quasibinomial()
+)
+
+# 2. Run the diagnostics function on the fitted model
+diagnostics_table <- svyglmdiag(fit_obesity)
+
+# 3. Display the diagnostics table
+knitr::kable(
+  diagnostics_table,
+  caption = "Reliability Diagnostics for NHANES Obesity Model",
+  digits = 3
+)
+```
+
+## Interpreting the Regression Diagnostics Table
+
+The output from `svyglmdiag()` provides a clear, term-by-term *report card* for your regression model. It helps you evaluate the reliability and interpretability of each coefficient.
+
+### Key Columns
+
+- **Estimate:**  
+  The coefficient on the log-odds scale. It represents the change in the log-odds of the outcome per unit change in the predictor.
+
+- **p.value** and **is_significant:**  
+  These indicate whether a predictor has a statistically significant association with the outcome.  
+  In our example, *Age* and *Race1 (Black)* are significant, while *Gender* is not.
+
+- **CI_Width:**  
+  This measures the precision of the estimate — smaller confidence interval widths imply more precise estimates.  
+  For instance, the width for *GenderMale* is relatively narrow, but since its estimate is close to zero, it is not statistically significant.
+
+- **RSE_percent** and **is_rse_high:**  
+  These columns illustrate the limitation of using **Relative Standard Error (RSE)** in regression contexts.  
+  The *GenderMale* coefficient shows a very high RSE (over 200%) because its estimate is near zero, even though its standard error is moderate.  
+  This highlights why focusing on **p-values** and **confidence intervals** provides a more reliable assessment of coefficient stability than RSE alone.
+
+---
+
+Overall, `svyglmdiag()` complements traditional regression output by making it easier to identify which predictors are both statistically meaningful and statistically stable under complex survey design.
