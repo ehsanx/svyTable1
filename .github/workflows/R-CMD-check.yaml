@@ -40,13 +40,11 @@ jobs:
           http-user-agent: ${{ matrix.config.http-user-agent }}
           use-public-rspm: true
 
-      - uses: r-lib/actions/setup-r-dependencies@v2
-        with:
-          extra-packages: |
-            any::rcmdcheck
-            any::knitr
-            any::rmarkdown
-          needs: check
+      - name: Install all dependencies
+        run: |
+          install.packages("pak", repos = "https://r-lib.github.io/p/pak/dev/")
+          pak::local_install_dev_deps()
+        shell: Rscript {0}
 
       - uses: r-lib/actions/check-r-package@v2
         with:

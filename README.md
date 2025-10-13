@@ -1,9 +1,8 @@
 # svyTable1: Create Publication-Ready Survey-Weighted Summary Tables
 
-**svyTable1** is a lightweight R package containing a single, focused function: `svytable1()`.  
-Its purpose is to generate publication-ready *"Table 1"* descriptive statistics from complex survey data, integrating seamlessly with the widely-used **survey** package.
+**svyTable1** is a focused R package for analyzing and presenting complex survey data. It streamlines the creation of publication-ready "Table 1" descriptive statistics and provides a suite of essential tools for regression model diagnostics, including coefficient stability checks, goodness-of-fit tests, and design-correct AUC calculations.
 
-The package was developed to simplify a common task in epidemiology and public health research — presenting stratified summary statistics that correctly account for survey design features such as **weights, strata, and clusters**, while following best practices for transparency and readability.
+Developed for common tasks in epidemiology and public health, the package integrates seamlessly with the widely-used survey package to correctly account for design features such as weights, strata, and clusters, while following best practices for transparency and readability.
 
 ---
 
