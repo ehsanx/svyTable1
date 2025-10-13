@@ -106,13 +106,15 @@ svyAUC <- function(fit, design) {
 
   auc_estimate <- result$theta
   se <- survey::SE(result)
-  ci <- stats::confint(result)
+  # ci <- stats::confint(result)
 
   output <- data.frame(
     AUC = auc_estimate,
     SE = se,
-    CI_Lower = ci[1],
-    CI_Upper = ci[2]
+    # CI_Lower = ci[1],
+    # CI_Upper = ci[2]
+    CI_Lower = auc_estimate - 1.96 * se,
+    CI_Upper = auc_estimate + 1.96 * se
   )
 
   rownames(output) <- NULL
