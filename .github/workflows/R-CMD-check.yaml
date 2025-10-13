@@ -43,7 +43,8 @@ jobs:
       - name: Install all dependencies
         run: |
           install.packages("pak", repos = "https://r-lib.github.io/p/pak/dev/")
-          pak::local_install_dev_deps()
+          pak::local_install_dev_deps(dependencies = TRUE)
+          pak::pkg_install("rcmdcheck")
         shell: Rscript {0}
 
       - uses: r-lib/actions/check-r-package@v2
