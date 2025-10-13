@@ -284,3 +284,6 @@ The output from `svyglmdiag()` provides a clear, term-by-term *report card* for 
 ---
 
 Overall, `svyglmdiag()` complements traditional regression output by making it easier to identify which predictors are both statistically meaningful and statistically stable under complex survey design.
+
+
+## References

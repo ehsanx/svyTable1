@@ -42,6 +42,54 @@
 #' @import stats
 #'
 #' @export
+#'
+#' @examples
+#' # Ensure required packages are loaded
+#' if (requireNamespace("survey", quietly = TRUE) &&
+#'     requireNamespace("NHANES", quietly = TRUE) &&
+#'     requireNamespace("dplyr", quietly = TRUE)) {
+#'
+#'   # 1. Prepare Data using NHANES
+#'   data(NHANESraw, package = "NHANES")
+#'   nhanes_adults_with_na <- NHANESraw %>%
+#'     dplyr::filter(Age >= 20) %>%
+#'     dplyr::mutate(
+#'       ObeseStatus = factor(ifelse(BMI >= 30, "Obese", "Not Obese"),
+#'                            levels = c("Not Obese", "Obese"))
+#'     )
+#'
+#'   adult_design_with_na <- survey::svydesign(
+#'     id = ~SDMVPSU,
+#'     strata = ~SDMVSTRA,
+#'     weights = ~WTMEC2YR,
+#'     nest = TRUE,
+#'     data = nhanes_adults_with_na
+#'   )
+#'
+#'   # 2. Basic Example: Create a simple Table 1
+#'   vars_to_summarize <- c("Age", "Gender", "Race1", "Education")
+#'   table1 <- svytable1(
+#'     design = adult_design_with_na,
+#'     strata_var = "ObeseStatus",
+#'     table_vars = vars_to_summarize
+#'   )
+#'   print(table1)
+#'
+#'   # 3. Advanced Example: Use reliability checks and get detailed metrics
+#'   results <- svytable1(
+#'     design = adult_design_with_na,
+#'     strata_var = "ObeseStatus",
+#'     table_vars = vars_to_summarize,
+#'     reliability_checks = TRUE,
+#'     return_metrics = TRUE
+#'   )
+#'
+#'   # View the table with unreliable estimates suppressed (*)
+#'   print(results$formatted_table)
+#'
+#'   # View the detailed report card of reliability checks
+#'   print(results$reliability_metrics)
+#' }
 svytable1 <- function(design, strata_var, table_vars,
                       mode = "mixed", commas = TRUE,
                       reliability_checks = FALSE, return_metrics = FALSE) {
