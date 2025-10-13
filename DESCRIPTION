@@ -1,14 +1,16 @@
 Package: svyTable1
-Title: Create Survey-Weighted Descriptive Statistics Tables
-Version: 0.4.0
+Title: Create Survey-Weighted Descriptive Statistics and Diagnostic Tables
+Version: 0.5.0
 Authors@R: c(person("Ehsan", "Karim",
                     email = "ehsan.karim@gmail.com",
                     role = c("aut", "cre")),
              person("Esteban", "Valencia",
                     comment = "Provided feedback on generalizing the svydiag function, tested installation issues and fixed a bug regarding effective sample size calculation.",
                     role = "ctb"))
-Description: A simple tool to create 'Table 1' summaries from complex 
-    survey data, with options for weighted, unweighted, and mixed displays.
+Description: A tool to create publication-ready descriptive summary tables 
+    from complex survey data. It also provides a suite of functions to 
+    evaluate survey-weighted regression models, including coefficient 
+    diagnostics, goodness-of-fit tests, and design-correct AUC calculations.
 License: MIT + file LICENSE
 Encoding: UTF-8
 RoxygenNote: 7.3.3
@@ -17,7 +19,8 @@ Imports:
     dplyr,
     tibble,
     magrittr,
-    stats
+    stats,
+    WeightedROC
 Suggests: 
     knitr,
     rmarkdown,

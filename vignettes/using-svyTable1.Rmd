@@ -44,7 +44,7 @@ data(NHANESraw)
 
 # Prepare data for adults, keeping NAs
 nhanes_adults_with_na <- NHANESraw %>%
-  filter(Age >= 20) %>%
+  dplyr::filter(Age >= 20) %>%
   mutate(
     ObeseStatus = factor(ifelse(BMI >= 30, "Obese", "Not Obese"),
                          levels = c("Not Obese", "Obese"))
@@ -287,5 +287,50 @@ The output from `svydiag()` provides a clear, term-by-term *report card* for you
 
 Overall, `svydiag()` complements traditional regression output by making it easier to identify which predictors are both statistically meaningful and statistically stable under complex survey design.
 
+
+## Goodness-of-Fit Test for Survey Models
+
+The package also includes `svygof()` to perform the Archer-Lemeshow goodness-of-fit test. This test helps assess how well your logistic regression model fits the data. A non-significant p-value (e.g., > 0.05) suggests that the model is a good fit.
+
+```{r gof-test}
+# We use the same model and design from the regression diagnostics example
+# fit_obesity <- svyglm(...)
+# adult_design_complete <- svydesign(...)
+
+# 1. Run the goodness-of-fit test
+gof_results <- svygof(fit_obesity, adult_design_complete)
+
+# 2. Display the results
+knitr::kable(
+  gof_results,
+  caption = "Archer-Lemeshow Goodness-of-Fit Test for Obesity Model"
+)
+```
+
+## Design-Correct AUC for Model Performance
+
+To evaluate the predictive performance of a model, you can calculate the Area Under the Curve (AUC) using `svyAUC()`. This function correctly accounts for the complex survey design (strata, clusters, and weights) by using a replicate-weights design object, which provides a more accurate estimate of the AUC's variance and confidence interval.
+
+```{r auc-calculation}
+# 1. The svyAUC() function requires a replicate-weights design object.
+# We convert our existing design object for this purpose.
+rep_design <- as.svrepdesign(adult_design_complete)
+
+# 2. Refit the model using the (replicate) design object
+fit_obesity_rep <- svyglm(
+  ObeseStatus ~ Age + Gender + Race1,
+  design = rep_design,
+  family = quasibinomial()
+)
+
+# 3. Calculate the design-correct AUC
+auc_results <- svyAUC(fit_obesity_rep, rep_design)
+
+# 4. Display the results
+knitr::kable(
+  auc_results,
+  caption = "Design-Correct AUC for Obesity Model"
+)
+```
 
 ## References
