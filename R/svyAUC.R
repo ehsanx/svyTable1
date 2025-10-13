@@ -1,21 +1,23 @@
-#' Calculate a Design-Correct AUC for a Survey Model
+#' Calculate and Optionally Plot a Design-Correct AUC for a Survey Model
 #'
 #' @description
 #' This function calculates the Area Under the Curve (AUC) and its design-correct
-#' standard error and 95% confidence interval for a survey logistic regression
-#' model. It correctly accounts for strata and clusters by using a
-#' replicate-weights survey design object.
+#' standard error and 95% confidence interval. It can also generate a plot of
+#' the weighted ROC curve.
 #'
 #' @param fit A fitted model object of class `svyglm`.
 #' @param design A replicate-weights survey design object, typically created with `as.svrepdesign`.
+#' @param plot A logical value. If `TRUE`, an ROC curve is plotted. Defaults to `FALSE`.
 #'
 #' @return
-#' A `data.frame` containing the AUC point estimate, its standard error (SE),
-#' and the lower and upper bounds of the 95% confidence interval.
+#' If `plot = FALSE` (default), returns a `data.frame` with the AUC, SE, and 95% CI.
+#' If `plot = TRUE`, invisibly returns a list containing the summary `data.frame`
+#' and another `data.frame` with the ROC curve coordinates (TPR and FPR).
 #'
 #' @importFrom survey withReplicates SE
 #' @importFrom WeightedROC WeightedROC WeightedAUC
-#' @importFrom stats model.frame model.matrix coef plogis
+#' @importFrom stats model.frame model.matrix coef plogis weights
+#' @importFrom graphics plot abline title
 #'
 #' @export
 #'
@@ -57,7 +59,7 @@
 #'   print(auc_results)
 #' }
 #' }
-svyAUC <- function(fit, design) {
+svyAUC <- function(fit, design, plot = FALSE) {
 
   # Input Validation
   if (!inherits(design, "svyrep.design")) {
@@ -69,6 +71,7 @@ svyAUC <- function(fit, design) {
 
   outcome_name <- all.vars(fit$formula[[2]])[1]
 
+  # Define the statistic function to be used with replicates
   auc_statistic <- function(weights, data) {
     model_formula <- formula(fit)
     mf <- model.frame(model_formula, data)
@@ -98,26 +101,57 @@ svyAUC <- function(fit, design) {
     WeightedROC::WeightedAUC(roc_curve)
   }
 
+  # Run the calculation across all replicate weights
   result <- survey::withReplicates(
     design,
     theta = auc_statistic,
     return.replicates = TRUE
   )
 
+  # Manually calculate the confidence interval
   auc_estimate <- result$theta
   se <- survey::SE(result)
-  # ci <- stats::confint(result)
 
-  output <- data.frame(
+  summary_df <- data.frame(
     AUC = auc_estimate,
     SE = se,
-    # CI_Lower = ci[1],
-    # CI_Upper = ci[2]
     CI_Lower = auc_estimate - 1.96 * se,
     CI_Upper = auc_estimate + 1.96 * se
   )
+  rownames(summary_df) <- NULL
 
-  rownames(output) <- NULL
-  return(output)
+  # --- PLOTTING LOGIC ---
+  if (plot) {
+    # Calculate ROC curve points using the full-sample weights
+    full_weights <- weights(design, "sampling")
+    roc_data <- auc_statistic(full_weights, design$variables) # Temporarily re-run to get roc_curve
+
+    # Actually need the curve, not just the AUC
+    predictions <- predict(fit, newdata = design$variables, type = "response")
+    outcome <- design$variables[[outcome_name]]
+    if(is.factor(outcome)) {
+      outcome <- as.numeric(outcome) - 1
+    }
+
+    roc_curve_points <- WeightedROC::WeightedROC(
+      guess = predictions,
+      label = outcome,
+      weight = full_weights
+    )
+
+    plot(roc_curve_points$FPR, roc_curve_points$TPR,
+         type = 'l',
+         xlab = "1 - Specificity (FPR)",
+         ylab = "Sensitivity (TPR)",
+         main = "Survey-Weighted ROC Curve"
+    )
+    abline(0, 1, lty = 2)
+    title(sub = paste0("AUC = ", round(summary_df$AUC, 3)), adj = 1)
+
+    invisible(list(summary = summary_df, roc_data = roc_curve_points))
+
+  } else {
+    return(summary_df)
+  }
 }
 

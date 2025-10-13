@@ -2,24 +2,26 @@
 % Please edit documentation in R/svyAUC.R
 \name{svyAUC}
 \alias{svyAUC}
-\title{Calculate a Design-Correct AUC for a Survey Model}
+\title{Calculate and Optionally Plot a Design-Correct AUC for a Survey Model}
 \usage{
-svyAUC(fit, design)
+svyAUC(fit, design, plot = FALSE)
 }
 \arguments{
 \item{fit}{A fitted model object of class `svyglm`.}
 
 \item{design}{A replicate-weights survey design object, typically created with `as.svrepdesign`.}
+
+\item{plot}{A logical value. If `TRUE`, an ROC curve is plotted. Defaults to `FALSE`.}
 }
 \value{
-A `data.frame` containing the AUC point estimate, its standard error (SE),
-and the lower and upper bounds of the 95% confidence interval.
+If `plot = FALSE` (default), returns a `data.frame` with the AUC, SE, and 95% CI.
+If `plot = TRUE`, invisibly returns a list containing the summary `data.frame`
+and another `data.frame` with the ROC curve coordinates (TPR and FPR).
 }
 \description{
 This function calculates the Area Under the Curve (AUC) and its design-correct
-standard error and 95% confidence interval for a survey logistic regression
-model. It correctly accounts for strata and clusters by using a
-replicate-weights survey design object.
+standard error and 95% confidence interval. It can also generate a plot of
+the weighted ROC curve.
 }
 \examples{
 \dontrun{

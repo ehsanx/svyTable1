@@ -294,9 +294,6 @@ The package also includes `svygof()` to perform the Archer-Lemeshow goodness-of-
 
 ```{r gof-test}
 # We use the same model and design from the regression diagnostics example
-# fit_obesity <- svyglm(...)
-# adult_design_complete <- svydesign(...)
-
 # 1. Run the goodness-of-fit test
 gof_results <- svygof(fit_obesity, adult_design_complete)
 
@@ -306,6 +303,8 @@ knitr::kable(
   caption = "Archer-Lemeshow Goodness-of-Fit Test for Obesity Model"
 )
 ```
+
+This significant p-value suggests that there is evidence of a poor fit. The model does not accurately predict the outcomes across the different risk groups, indicating that it may be mis-specified or missing important variables or interactions.
 
 ## Design-Correct AUC for Model Performance
 
@@ -324,13 +323,28 @@ fit_obesity_rep <- svyglm(
 )
 
 # 3. Calculate the design-correct AUC
-auc_results <- svyAUC(fit_obesity_rep, rep_design)
+auc_results_list <- svyAUC(fit_obesity_rep, rep_design, plot = TRUE)
 
-# 4. Display the results
+# 2. Display the summary table from the list
 knitr::kable(
-  auc_results,
+  auc_results_list$summary,
   caption = "Design-Correct AUC for Obesity Model"
 )
+
+# Use the roc_data component to build a custom ggplot
+library(ggplot2)
+ggplot(auc_results_list$roc_data, aes(x = FPR, y = TPR)) +
+  geom_line(color = "blue", size = 1) +
+  geom_abline(linetype = "dashed") +
+  labs(
+    title = "Survey-Weighted ROC Curve",
+    subtitle = paste0("AUC = ", round(auc_results_list$summary$AUC, 3)),
+    x = "1 - Specificity (FPR)",
+    y = "Sensitivity (TPR)"
+  ) +
+  theme_minimal()
 ```
+
+An AUC of 0.5 represents a model with no better-than-random chance of discriminating between outcomes. The model's AUC of 0.587 is very close to this baseline, which indicates poor to failed discrimination. It is not effective at distinguishing between individuals who are obese and those who are not.
 
 ## References
