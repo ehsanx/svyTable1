@@ -5,3 +5,4 @@
 ^Meta$
 ^readme\.html$
 ^\.github$
+^cran-comments\.md$
