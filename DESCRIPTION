@@ -1,6 +1,6 @@
 Package: svyTable1
 Title: Create Survey-Weighted Descriptive Statistics and Diagnostic Tables
-Version: 0.6.0
+Version: 0.7.0
 Authors@R: c(person("Ehsan", "Karim",
                     email = "ehsan.karim@gmail.com",
                     role = c("aut", "cre")),
@@ -20,11 +20,16 @@ Imports:
     tibble,
     magrittr,
     stats,
-    WeightedROC
-Suggests: 
+    WeightedROC,
+    kableExtra,
     knitr,
+    stringr
+Suggests: 
     rmarkdown,
     NHANES,
     ggplot2,
-    tidyr
+    tidyr,
+    mice,
+    testthat (>= 3.0.0)
 VignetteBuilder: knitr
+Config/testthat/edition: 3

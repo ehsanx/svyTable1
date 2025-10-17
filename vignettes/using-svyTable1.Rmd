@@ -1,8 +1,8 @@
 ---
-title: "Using svyTable1 for Survey-Weighted Summary Tables"
+title: "Creating Publication-Ready Tables with svyTable1"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{Using svyTable1 for Survey-Weighted Summary Tables}
+  %\VignetteIndexEntry{Creating Publication-Ready Tables with svyTable1}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 bibliography: references.bib
@@ -16,9 +16,14 @@ knitr::opts_chunk$set(
 )
 ```
 
-The svyTable1 package provides a straightforward function, `svytable1()`, to generate descriptive statistics tables ("Table 1") from complex survey data. This vignette demonstrates its use, explains its default "mixed mode" display, and details its advanced reliability checking features.
+The **svyTable1** package provides a suite of functions for creating publication-ready tables from complex analytical results. Its capabilities are divided into two main areas:
 
-## Understanding the Mixed Mode (A Best Practice)
+1.  **Complex Survey Analysis:** Generating descriptive "Table 1" summaries (`svytable1()`), regression diagnostics (`svydiag()`), goodness-of-fit tests (`svygof()`), and design-correct AUCs (`svyAUC()`) from **survey** package objects.
+2.  **Multiple Imputation Results:** Formatting pooled regression model outputs (`svypooled()`) from **mice** package objects into clean, "fallacy-safe" tables.
+
+This vignette demonstrates how to use these functions to produce transparent and reliable tables for your research.
+
+## Describing Complex Survey Data
 
 The `svytable1` function defaults to `mode = "mixed"`. This approach is considered a best practice in high-quality survey research for several key reasons rooted in transparency.
 
@@ -33,7 +38,7 @@ By showing both, you allow your audience to understand the crucial distinction b
 
 ### 1. Data Preparation
 
-```{r}
+```{r tab}
 library(svyTable1)
 library(survey)
 library(dplyr)
@@ -64,7 +69,7 @@ adult_design_with_na <- svydesign(
 
 #### Example A: Handling Variables with Missing Data
 
-```{r}
+```{r na}
 # Define a set of variables, some with expected missing values
 vars_with_missing <- c(
   "Age", 
@@ -95,7 +100,7 @@ It's important to note that `svytable1()` automatically detects missing (`NA`) v
 
 #### Example B: Summarizing Complete Data
 
-```{r}
+```{r compl}
 library(tidyr)
 
 # Define a set of core variables for a complete-case analysis
@@ -150,7 +155,7 @@ You can activate this feature using two arguments:
 
 Let's run our analysis again with the reliability checks turned on.
 
-```{r}
+```{r rel}
 # Generate the table and the reliability metrics
 results_list <- svytable1(
   design = adult_design_with_na, 
@@ -169,12 +174,13 @@ knitr::kable(
 
 You'll notice asterisks (*) in the table. These are estimates that the function has flagged as unreliable based on the NCHS rules [@nhanes_reliability_estimates]. To see why, we can look at the metrics table.
 
-```{r}
+```{r displ}
 # Display the detailed reliability metrics
 knitr::kable(
-  results_list$reliability_metrics, 
-  caption = "Detailed Reliability Metrics for Each Estimate"
+  results_list$reliability_metrics[results_list$reliability_metrics$suppressed == TRUE,], 
+  caption = "Reliability metrics for those that are supressed"
 )
+# Check results_list$reliability_metrics for full list
 ```
 
 ## Interpreting the Reliability Metrics
@@ -346,5 +352,77 @@ ggplot(auc_results_list$roc_data, aes(x = FPR, y = TPR)) +
 ```
 
 An AUC of 0.5 represents a model with no better-than-random chance of discriminating between outcomes. The model's AUC of 0.587 is very close to this baseline, which indicates poor to failed discrimination. It is not effective at distinguishing between individuals who are obese and those who are not.
+
+---
+
+## Formatting Results from Multiple Imputation
+
+Beyond survey data, a common analytical challenge is presenting results from models fitted to multiply imputed datasets. The **svyTable1** package provides the `svypooled()` function to address this. It takes a pooled model object (`mipo`) from the `mice` package and creates a publication-ready table of regression coefficients (e.g., Odds Ratios).
+
+A key feature of `svypooled()` is its ability to create a **"fallacy-safe"** table. This best-practice approach displays results for the main exposure variable only, while listing all adjustment covariates in a footnote. This prevents the common misinterpretation of covariate p-values as if they were main effects in their own right.
+
+### Example: Handling Missing Data in a Survey Design
+
+When you have missing data in a complex survey, the correct approach is to first perform multiple imputation on the raw dataset and then run your survey-weighted model on each of the completed datasets. The results are then pooled, and this final pooled object is what you format with `svypooled()`.
+
+#### Data Preparation
+
+First, we'll prepare the raw `NHANESraw` data.
+
+```{r mice}
+# Load required packages
+library(mice)
+library(dplyr)
+library(survey)
+library(NHANES)
+
+data(NHANESraw, package = "NHANES")
+nhanes_analytic <- NHANESraw %>%
+  filter(Age >= 20 & WTMEC2YR > 0) %>% 
+  mutate(
+    Obese = factor(ifelse(BMI >= 30, "Yes", "No"), levels = c("No", "Yes")),
+    AgeCat = cut(Age, breaks = c(19, 39, 59, 80), labels = c("20-39", "40-59", "60-80")),
+    Smoke100 = factor(Smoke100, levels = c("No", "Yes"))
+  ) %>%
+  select(Obese, AgeCat, Smoke100, Education, SDMVPSU, SDMVSTRA, WTMEC2YR)
+```
+
+#### Pooling from Imputed Data
+
+```{r mice-fit}
+imputed_data <- mice(nhanes_analytic, m = 2, maxit = 2, seed = 123, printFlag = FALSE)
+fit_list <- list()
+for (i in 1:imputed_data$m) {
+  completed_data <- complete(imputed_data, i)
+  design_i <- svydesign(id = ~SDMVPSU, strata = ~SDMVSTRA, weights = ~WTMEC2YR, nest = TRUE, data = completed_data)
+  fit_list[[i]] <- svyglm(Obese ~ Smoke100 + AgeCat + Education, design = design_i, family = quasibinomial())
+}
+pooled_results <- pool(fit_list)
+```
+
+#### Generating the Table with `svypooled`
+
+```{r mice-pool}
+# Example A: Create a "fallacy-safe" table (default)
+svypooled(
+ pooled_model = pooled_results,
+ main_exposure = "Smoke100", 
+ adj_var_names = c("AgeCat", "Education"),
+ measure = "OR",
+ title = "Adjusted Odds of Obesity (Fallacy-Safe)"
+)
+
+
+# Example B: Create a full table with all variables
+svypooled(
+ pooled_model = pooled_results,
+ main_exposure = "Smoke100", 
+ adj_var_names = c("AgeCat", "Education"),
+ measure = "OR",
+ title = "Adjusted Odds of Obesity (Full Table for Appendix)",
+ fallacy_safe = FALSE
+)
+```
+
 
 ## References

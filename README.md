@@ -1,6 +1,6 @@
 # svyTable1: Create Publication-Ready Survey-Weighted Summary Tables
 
-**svyTable1** is a focused R package for analyzing and presenting complex survey data. It streamlines the creation of publication-ready "Table 1" descriptive statistics and provides a suite of essential tools for regression model diagnostics, including coefficient stability checks, goodness-of-fit tests, and design-correct AUC calculations.
+**svyTable1** is an R package for creating publication-ready tables from complex analytical results. It streamlines the creation of "Table 1" descriptive summaries from survey package objects and provides tools for formatting regression model outputs from multiply imputed datasets managed by the mice package.
 
 Developed for common tasks in epidemiology and public health, the package integrates seamlessly with the widely-used survey package to correctly account for design features such as weights, strata, and clusters, while following best practices for transparency and readability.
 
@@ -17,7 +17,7 @@ Developed for common tasks in epidemiology and public health, the package integr
 - **Regression Diagnostics**: Includes the `svydiag()` helper function to assess the reliability of model coefficients.
 - **Goodness-of-Fit Testing**: Provides `svygof()` to perform the Archer-Lemeshow goodness-of-fit test for survey logistic regression models.
 - **Design-Correct AUC**: Offers `svyAUC()` to calculate the Area Under the Curve (AUC) with proper variance estimation for complex survey designs.
-
+- **Multiple Imputation Support**: Includes the `svypooled()` helper function to create clean, "fallacy-safe" tables from `mipo` objects (pooled model results) from the `mice` package.
 ---
 
 ## 🧩 Installation
@@ -242,6 +242,61 @@ auc_results <- svyAUC(fit_obesity_rep, rep_design)
 knitr::kable(
   auc_results,
   caption = "Table 5: Design-Correct AUC for Obesity Model"
+)
+```
+
+## Example G: Creating Tables from Multiply Imputed Data
+
+The `svypooled()` function is designed to work with pooled model results from the mice package. It can produce a "fallacy-safe" table showing only the main exposure or a full table with all model variables.
+
+First, we'll prepare some imputed data and run a pooled regression model.
+
+### Data Preparation & Modeling
+
+```r
+# Load required packages
+library(mice)
+
+# Use the built-in `nhanes` dataset and create some missing values
+nhanes_miss <- nhanes
+nhanes_miss$hyp[sample(1:nrow(nhanes_miss), 5)] <- NA
+
+# Perform multiple imputation
+imputed_data <- mice(nhanes_miss, m = 5, seed = 123, printFlag = FALSE)
+
+# Fit a logistic regression model on each imputed dataset and pool the results
+fit <- with(imputed_data, glm(hyp ~ age + bmi + chl, family = "binomial"))
+pooled_model <- pool(fit)
+```
+### Generate a "Fallacy-Safe" Table (Default)
+
+This table only shows the main exposure (age) and lists the adjustment variables in a footnote to prevent misinterpretation of covariate statistics.
+
+```r
+# Generate the fallacy-safe table
+svypooled(
+  pooled_model = pooled_model,
+  main_exposure = "age",
+  adj_var_names = c("bmi", "chl"),
+  measure = "OR",
+  title = "Adjusted Odds of Hypertension by Age Group (Fallacy-Safe)"
+)
+```
+
+### Generate a Full Model Table
+
+This table shows the formatted results for all variables included in the model.
+
+
+```r
+# Generate the full table
+svypooled(
+  pooled_model = pooled_model,
+  main_exposure = "age",
+  adj_var_names = c("bmi", "chl"),
+  measure = "OR",
+  title = "Adjusted Odds of Hypertension (Full Model)",
+  fallacy_safe = FALSE
 )
 ```
 
