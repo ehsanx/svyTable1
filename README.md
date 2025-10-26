@@ -18,6 +18,10 @@ Developed for common tasks in epidemiology and public health, the package integr
 - **Goodness-of-Fit Testing**: Provides `svygof()` to perform the Archer-Lemeshow goodness-of-fit test for survey logistic regression models.
 - **Design-Correct AUC**: Offers `svyAUC()` to calculate the Area Under the Curve (AUC) with proper variance estimation for complex survey designs.
 - **Multiple Imputation Support**: Includes the `svypooled()` helper function to create clean, "fallacy-safe" tables from `mipo` objects (pooled model results) from the `mice` package.
+- **Interaction Analysis**: Provides tools to calculate and present interaction effects:
+    - *Joint Effects*: Calculate effects for each combination of two factors relative to a reference group from an interaction model (`jointeffects`).
+    - *Simple Effects*: Calculate stratum-specific effects from a joint-variable model (`inteffects`).
+    - *Additive Interaction*: Calculate RERI, AP, and Synergy Index with survey-adjusted confidence intervals from either joint or interaction models (`addint`, `addintlist`).
 ---
 
 ## 🧩 Installation
@@ -299,6 +303,103 @@ svypooled(
   fallacy_safe = FALSE
 )
 ```
+
+## Example H: Analyzing Interaction Effects
+
+Demonstrating the calculation of additive interaction measures (RERI, AP, S) for the interaction between Race and Obesity status on Hypertension risk (defined as Systolic BP >= 130 mmHg).
+
+```r
+library(survey)
+library(NHANES)
+library(dplyr)
+library(tidyr)
+library(msm)
+
+data(NHANESraw)
+
+vars_needed <- c("Age", "Race1", "BPSysAve", "BMI", "ObeseStatus", "Hypertension_130",
+                 "SDMVPSU", "SDMVSTRA", "WTMEC2YR")
+
+nhanes_adults_processed <- NHANESraw %>%
+  filter(Age >= 20) %>%
+  mutate(
+    ObeseStatus = factor(ifelse(BMI >= 30, "Obese", "Not Obese"),
+                         levels = c("Not Obese", "Obese")),
+    Hypertension_130 = factor(ifelse(BPSysAve >= 130, "Yes", "No"),
+                              levels = c("No", "Yes")),
+    Race1 = relevel(as.factor(Race1), ref = "White")
+  ) %>%
+  select(all_of(vars_needed)) %>%
+  drop_na()
+
+adult_design_binary <- svydesign(
+  id = ~SDMVPSU, strata = ~SDMVSTRA, weights = ~WTMEC2YR,
+  nest = TRUE, data = nhanes_adults_processed
+)
+
+# --- Fit Interaction Term Model ---
+interaction_model_logit <- svyglm(
+  Hypertension_130 ~ Race1 * ObeseStatus + Age,
+  design = adult_design_binary, family = quasibinomial()
+)
+
+# --- Fit Joint Variable Model ---
+adult_design_binary <- update(adult_design_binary,
+                              Race1_ObeseStatus = interaction(Race1, ObeseStatus, sep = "_", drop = TRUE)
+)
+adult_design_binary <- update(adult_design_binary,
+                              Race1_ObeseStatus = relevel(Race1_ObeseStatus, ref = "White_Not Obese")
+)
+joint_model_logit <- svyglm(
+  Hypertension_130 ~ Race1_ObeseStatus + Age,
+  design = adult_design_binary, family = quasibinomial()
+)
+
+# --- 2. Calculate Additive Interactions using addintlist ---
+all_interactions_table <- addintlist(
+  model = interaction_model_logit,
+  factor1_name = "Race1",
+  factor2_name = "ObeseStatus",
+  measures = "all", # Calculate RERI, AP, and S
+  digits = 3 # Round to 3 decimal places
+)
+
+print("--- Additive Interaction Results (RERI, AP, S) ---")
+print(all_interactions_table, n = 50)
+
+# --- 3. Calculate Joint Effects using get_joint_effects ---
+# Calculates OR for each combo (e.g., Black+Obese) vs. reference (White+Not Obese)
+# using the interaction model output
+joint_effects_ratio <- get_joint_effects(
+  interaction_model = interaction_model_logit,
+  factor1_name = "Race1",
+  factor2_name = "ObeseStatus",
+  scale = "ratio", # Get ORs
+  digits = 2
+)
+print("--- Joint Effects (OR Scale) from Interaction Model ---")
+print(joint_effects_ratio, n=20)
+
+# --- 4. Calculate Simple Effects using inteffects ---
+# Calculates stratum-specific ORs (e.g., OR for Obese vs Not Obese within Black race)
+# using the joint variable model output
+f1_levels <- levels(adult_design_binary$variables$Race1)
+f2_levels <- levels(adult_design_binary$variables$ObeseStatus)
+
+simple_effects_ratio <- inteffects(
+  joint_model = joint_model_logit,
+  joint_var_name = "Race1_ObeseStatus",
+  factor1_name = "Race1",
+  factor2_name = "ObeseStatus",
+  factor1_levels = f1_levels,
+  factor2_levels = f2_levels,
+  level_separator = "_",
+  scale = "ratio", # Get ORs
+  digits = 2
+)
+print("--- Simple Effects (OR Scale) from Joint Model ---")
+print(simple_effects_ratio, n=20)
+```  
 
 ## 🤝 Contributing
 

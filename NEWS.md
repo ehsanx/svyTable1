@@ -1,3 +1,5 @@
+# svyTable1 0.8.0
+
 # svyTable1 0.4.0
 
 ## MAJOR IMPROVEMENTS

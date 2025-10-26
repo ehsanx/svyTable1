@@ -18,7 +18,7 @@ knitr::opts_chunk$set(
 
 The **svyTable1** package provides a suite of functions for creating publication-ready tables from complex analytical results. Its capabilities are divided into two main areas:
 
-1.  **Complex Survey Analysis:** Generating descriptive "Table 1" summaries (`svytable1()`), regression diagnostics (`svydiag()`), goodness-of-fit tests (`svygof()`), and design-correct AUCs (`svyAUC()`) from **survey** package objects.
+1.  **Complex Survey Analysis:** Generating descriptive "Table 1" summaries (`svytable1()`), regression diagnostics (`svydiag()`), goodness-of-fit tests (`svygof()`), design-correct AUCs (`svyAUC()`) and analyzing interaction effects (`addint`, `addintlist`, `jointeffects`, `inteffects`) from **survey** package objects.
 2.  **Multiple Imputation Results:** Formatting pooled regression model outputs (`svypooled()`) from **mice** package objects into clean, "fallacy-safe" tables.
 
 This vignette demonstrates how to use these functions to produce transparent and reliable tables for your research.
@@ -43,6 +43,7 @@ library(svyTable1)
 library(survey)
 library(dplyr)
 library(NHANES)
+library(knitr)
 
 # Load the raw NHANES data (2009-2012)
 data(NHANESraw)
@@ -423,6 +424,206 @@ svypooled(
  fallacy_safe = FALSE
 )
 ```
+
+
+---
+
+## Analyzing Interaction Effects
+
+The `svyTable1` package includes several functions to help analyze and present interaction effects between two categorical variables in survey-weighted regression models (`svyglm` or `svycoxph`). These functions facilitate demonstrating the equivalence of different modeling approaches (joint variable vs. interaction term) and calculating measures of additive interaction.
+
+### Example: Interaction between Race and Obesity on Hypertension (NHANES)
+
+We will use the NHANES data to investigate whether the effect of obesity (`ObeseStatus`) on hypertension (Hypertension_130, defined as Systolic BP >= 130 mmHg) differs across racial groups (`Race1`).
+
+## 1. Data Preparation and Model Fitting
+
+```{r interaction-setup}}
+data(NHANESraw)
+
+vars_needed <- c("Age", "Race1", "BPSysAve", "BMI", "ObeseStatus", "Hypertension_130",
+                 "SDMVPSU", "SDMVSTRA", "WTMEC2YR")
+
+nhanes_adults_processed <- NHANESraw %>%
+  filter(Age >= 20) %>%
+  mutate(
+    ObeseStatus = factor(ifelse(BMI >= 30, "Obese", "Not Obese"),
+                         levels = c("Not Obese", "Obese")),
+    Hypertension_130 = factor(ifelse(BPSysAve >= 130, "Yes", "No"),
+                              levels = c("No", "Yes")),
+    Race1 = relevel(as.factor(Race1), ref = "White")
+  ) %>%
+  select(all_of(vars_needed)) %>%
+  drop_na()
+
+adult_design_binary <- svydesign(
+  id = ~SDMVPSU,
+  strata = ~SDMVSTRA,
+  weights = ~WTMEC2YR,
+  nest = TRUE,
+  data = nhanes_adults_processed
+)
+
+interaction_model_logit <- svyglm(
+  Hypertension_130 ~ Race1 * ObeseStatus + Age,
+  design = adult_design_binary,
+  family = quasibinomial()
+)
+
+adult_design_binary <- update(adult_design_binary,
+  Race1_ObeseStatus = interaction(Race1, ObeseStatus, sep = "_", drop = TRUE)
+)
+adult_design_binary <- update(adult_design_binary,
+  Race1_ObeseStatus = relevel(Race1_ObeseStatus, ref = "White_Not Obese")
+)
+joint_model_logit <- svyglm(
+  Hypertension_130 ~ Race1_ObeseStatus + Age,
+  design = adult_design_binary,
+  family = quasibinomial()
+)
+
+f1_levels <- levels(adult_design_binary$variables$Race1)
+f2_levels <- levels(adult_design_binary$variables$ObeseStatus)
+```
+
+## 2. Additive Interaction Measures
+
+This section calculates measures of **additive interaction**. The `addintlist()` function
+automatically finds every combination of non-reference levels for your two factors (`Race1` and
+`ObeseStatus`) and computes three key metrics for each 2x2 comparison [@knol2012recommendations].
+
+• **RERI (Relative Excess Risk due to Interaction)**: Measures the excess risk from the
+  interaction itself, relative to the baseline risk. A value of 0 means no additive interaction.
+
+• **AP (Attributable Proportion due to Interaction)**: Estimates the fraction of the risk among
+  those with *both* risk factors that is attributable to their interaction. A value of 0 means no
+  additive interaction.
+
+• **S (Synergy Index)**: Assesses whether the effect of both factors together is greater than
+  (synergistic, S > 1) or less than (antagonistic, S < 1) the sum of their individual effects.
+  A value of 1 means no additive interaction.
+
+The table shows these metrics for each comparison (e.g., `"Race1: Black"` vs. `"ObeseStatus: Obese"`).
+For the first row, the RERI is 0.025 with a 95% CI of [-0.587, 0.637]. Since this interval clearly
+contains 0, **there is no evidence of an additive interaction** between `'Race1: Black'` and
+`'ObeseStatus: Obese'` on the risk of hypertension.
+
+
+```{r all-interactions}
+all_interactions_table <- addintlist(
+  model = interaction_model_logit,
+  factor1_name = "Race1",
+  factor2_name = "ObeseStatus",
+  measures = "all",
+  digits = 3
+)
+knitr::kable(all_interactions_table,
+  caption = "Additive Interaction Measures (RERI, AP, S) for Race x Obesity on Hypertension",
+  digits = 3)
+```
+
+## 3. Joint Effects
+
+This section estimates the **joint effects** for every combination of `Race1` and `ObeseStatus`,
+all relative to the single reference group (`White`, `Not Obese`).
+
+The `jointeffects()` function uses the coefficients from your **interaction model**
+(`~ Race1 * ObeseStatus`) to mathematically combine the main effects and interaction terms.
+
+For example, the effect for `Black` + `Obese` is calculated by summing the model coefficients:
+
+`log(OR) = (effect of Black) + (effect of Obese) + (effect of Black:Obese interaction)`
+
+This provides a single, easy-to-interpret **odds ratio (OR)** for each group compared to the reference group.
+
+• **Ratio Scale Table**: Shows the final ORs. The `'Black' + 'Obese'` group has an OR of 2.53
+  (95% CI: 1.98–3.24) for hypertension compared to the `'White' + 'Not Obese'` group.
+  The reference group (`White`, `Not Obese`) is correctly shown as **1.00**.
+
+• **Log Scale Table**: Shows the same information on the **log-odds scale**, which the model uses internally.
+  For example, `exp(0.930)` from the log table equals **2.53** from the ratio table.
+
+
+```{r joint-effects}
+joint_effects_ratio <- jointeffects(
+  interaction_model = interaction_model_logit,
+  factor1_name = "Race1",
+  factor2_name = "ObeseStatus",
+  scale = "ratio",
+  digits = 2)
+knitr::kable(joint_effects_ratio,
+  caption = "Joint Effects (OR Scale) Estimated from Interaction Model",
+  digits = 2)
+
+joint_effects_log <- jointeffects(
+  interaction_model = interaction_model_logit,
+  factor1_name = "Race1",
+  factor2_name = "ObeseStatus",
+  scale = "log",
+  digits = 3)
+knitr::kable(joint_effects_log,
+  caption = "Joint Effects (Log-OR Scale) Estimated from Interaction Model",
+  digits = 3)
+```
+
+## 4. Simple Effects
+
+This section calculates the **simple effects**, which are stratum-specific comparisons. This is the
+classic way to present an interaction, as it shows how the effect of one variable **changes** across
+the levels of another.
+
+The `inteffects()` function is designed to work on a **joint-variable model** (one fit with a
+combined `Race1_ObeseStatus` variable). It uses the estimates from that model to calculate all
+the pairwise comparisons **within** specific strata.
+
+The table is broken into two parts:
+
+1. **Effect of Obesity, stratified by Race**:  
+   The first five rows (e.g., `ObeseStatus(Obese vs Not Obese): Race1(White)`) show the effect of
+   being obese **within** each racial group. You can see the OR for obesity is **1.40** for the
+   'White' group, but **1.20** for the 'Black' group, **1.66** for 'Hispanic', etc.
+   This variation *is* the interaction.
+
+2. **Effect of Race, stratified by Obesity**:  
+   The remaining rows (e.g., `Race1(Black vs White): ObeseStatus(Not Obese)`) show the effect of
+   race/ethnicity **within** each obesity status group.  
+   For example, the OR for 'Black vs White' is **2.11** among 'Not Obese' individuals, but only
+   **1.81** among 'Obese' individuals.
+
+The **p-value** column tells you if that specific simple effect is statistically significant.
+
+
+```{r simple-effects}
+simple_effects_ratio <- inteffects(
+  joint_model = joint_model_logit,
+  joint_var_name = "Race1_ObeseStatus",
+  factor1_name = "Race1",
+  factor2_name = "ObeseStatus",
+  factor1_levels = f1_levels,
+  factor2_levels = f2_levels,
+  level_separator = "_",
+  scale = "ratio",
+  digits = 2)
+knitr::kable(simple_effects_ratio,
+  caption = "Simple Effects (OR Scale) Estimated from Joint Model",
+  digits = 2)
+
+simple_effects_log <- inteffects(
+  joint_model = joint_model_logit,
+  joint_var_name = "Race1_ObeseStatus",
+  factor1_name = "Race1",
+  factor2_name = "ObeseStatus",
+  factor1_levels = f1_levels,
+  factor2_levels = f2_levels,
+  level_separator = "_",
+  scale = "log",
+  digits = 3)
+knitr::kable(simple_effects_log,
+  caption = "Simple Effects (Log-OR Scale) Estimated from Joint Model",
+  digits = 3)
+```
+
+
 
 
 ## References

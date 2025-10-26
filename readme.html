@@ -355,16 +355,16 @@ display: none;
 <div id="svytable1-create-publication-ready-survey-weighted-summary-tables" class="section level1">
 <h1>svyTable1: Create Publication-Ready Survey-Weighted Summary
 Tables</h1>
-<p><strong>svyTable1</strong> is a lightweight R package containing a
-single, focused function: <code>svytable1()</code>.<br />
-Its purpose is to generate publication-ready <em>“Table 1”</em>
-descriptive statistics from complex survey data, integrating seamlessly
-with the widely-used <strong>survey</strong> package.</p>
-<p>The package was developed to simplify a common task in epidemiology
-and public health research — presenting stratified summary statistics
-that correctly account for survey design features such as
-<strong>weights, strata, and clusters</strong>, while following best
-practices for transparency and readability.</p>
+<p><strong>svyTable1</strong> is an R package for creating
+publication-ready tables from complex analytical results. It streamlines
+the creation of “Table 1” descriptive summaries from survey package
+objects and provides tools for formatting regression model outputs from
+multiply imputed datasets managed by the mice package.</p>
+<p>Developed for common tasks in epidemiology and public health, the
+package integrates seamlessly with the widely-used survey package to
+correctly account for design features such as weights, strata, and
+clusters, while following best practices for transparency and
+readability.</p>
 <hr />
 <div id="key-features" class="section level2">
 <h2>✨ Key Features</h2>
@@ -387,15 +387,41 @@ unreliable estimates.</li>
 <code>&quot;unweighted&quot;</code> summaries.</li>
 <li><strong>Readability:</strong> Option to format large numbers with
 commas for improved readability.</li>
+<li><strong>Regression Diagnostics</strong>: Includes the
+<code>svydiag()</code> helper function to assess the reliability of
+model coefficients.</li>
+<li><strong>Goodness-of-Fit Testing</strong>: Provides
+<code>svygof()</code> to perform the Archer-Lemeshow goodness-of-fit
+test for survey logistic regression models.</li>
+<li><strong>Design-Correct AUC</strong>: Offers <code>svyAUC()</code> to
+calculate the Area Under the Curve (AUC) with proper variance estimation
+for complex survey designs.</li>
+<li><strong>Multiple Imputation Support</strong>: Includes the
+<code>svypooled()</code> helper function to create clean, “fallacy-safe”
+tables from <code>mipo</code> objects (pooled model results) from the
+<code>mice</code> package.</li>
+<li><strong>Interaction Analysis</strong>: Provides tools to calculate
+and present interaction effects:
+<ul>
+<li><em>Joint Effects</em>: Calculate effects for each combination of
+two factors relative to a reference group from an interaction model
+(<code>jointeffects</code>).</li>
+<li><em>Simple Effects</em>: Calculate stratum-specific effects from a
+joint-variable model (<code>inteffects</code>).</li>
+<li><h2 id="additive-interaction-calculate-reri-ap-and-synergy-index-with-survey-adjusted-confidence-intervals-from-either-joint-or-interaction-models-addint-addintlist."><em>Additive
+Interaction</em>: Calculate RERI, AP, and Synergy Index with
+survey-adjusted confidence intervals from either joint or interaction
+models (<code>addint</code>, <code>addintlist</code>).</h2></li>
+</ul></li>
 </ul>
-<hr />
 </div>
 <div id="installation" class="section level2">
 <h2>🧩 Installation</h2>
 <p>You can install the development version of <strong>svyTable1</strong>
 from GitHub with:</p>
 <pre class="r"><code># install.packages(&quot;devtools&quot;)
-devtools::install_github(&quot;ehsanx/svyTable1&quot;, build_vignettes = TRUE)</code></pre>
+# In README.md
+devtools::install_github(&quot;ehsanx/svyTable1&quot;, build_vignettes = TRUE, dependencies = TRUE)</code></pre>
 <hr />
 </div>
 <div id="usage-examples" class="section level2">
@@ -494,117 +520,513 @@ knitr::kable(results_list$reliability_metrics)</code></pre>
 </div>
 </div>
 </div>
-<div id="example-output" class="section level2">
-<h2>📊 Example Output</h2>
-<table>
+<div id="example-output-1" class="section level2">
+<h2>📊 Example Output 1</h2>
+<p>Example <code>svytable1</code> output table from Example C with the
+reliability checks applied.</p>
+<table style="width:100%;">
 <colgroup>
-<col width="18%" />
-<col width="13%" />
 <col width="16%" />
 <col width="16%" />
-<col width="20%" />
-<col width="13%" />
+<col width="16%" />
+<col width="16%" />
+<col width="16%" />
+<col width="16%" />
 </colgroup>
 <thead>
 <tr class="header">
-<th>Variable</th>
-<th>Level</th>
-<th>Overall</th>
-<th>Missing</th>
-<th>Not Obese</th>
-<th>Obese</th>
+<th align="left">Variable</th>
+<th align="left">Level</th>
+<th align="left">Overall</th>
+<th align="left">Missing</th>
+<th align="left">Not Obese</th>
+<th align="left">Obese</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>n</td>
-<td></td>
-<td>11,778</td>
-<td>547</td>
-<td>7,073</td>
-<td>4,158</td>
+<td align="left">n</td>
+<td align="left"></td>
+<td align="left">11,778</td>
+<td align="left">547</td>
+<td align="left">7,073</td>
+<td align="left">4,158</td>
 </tr>
 <tr class="even">
-<td>Age</td>
-<td>Mean (SD)</td>
-<td>47.18 (16.89)</td>
-<td>56.29 (19.15)</td>
-<td>46.45 (17.32)</td>
-<td>48.25 (15.87)</td>
+<td align="left">Age</td>
+<td align="left">Mean (SD)</td>
+<td align="left">47.18 (16.89)</td>
+<td align="left">56.29 (19.15)</td>
+<td align="left">46.45 (17.32)</td>
+<td align="left">48.25 (15.87)</td>
 </tr>
 <tr class="odd">
-<td>Race1</td>
-<td>Black</td>
-<td>2,577 (11.4%)</td>
-<td>108 (12.1%)</td>
-<td>1,296 (9.1%)</td>
-<td>1,173 (15.8%)</td>
+<td align="left">Race1</td>
+<td align="left">Black</td>
+<td align="left">2,577 (11.4%)</td>
+<td align="left">108 (12.1%)</td>
+<td align="left">1,296 (9.1%)</td>
+<td align="left">1,173 (15.8%)</td>
 </tr>
 <tr class="even">
-<td>Hispanic</td>
-<td>1,210 (5.8%)</td>
-<td>62 (2.9%)</td>
-<td>714 (5.7%)</td>
-<td>434 (6.0%)</td>
-<td></td>
+<td align="left"></td>
+<td align="left">Hispanic</td>
+<td align="left">1,210 (5.8%)</td>
+<td align="left">*</td>
+<td align="left">714 (5.7%)</td>
+<td align="left">434 (6.0%)</td>
 </tr>
 <tr class="odd">
-<td>…</td>
-<td>…</td>
-<td>…</td>
-<td>…</td>
-<td>…</td>
-<td>…</td>
+<td align="left"></td>
+<td align="left">Mexican</td>
+<td align="left">1,680 (8.2%)</td>
+<td align="left">*</td>
+<td align="left">920 (7.3%)</td>
+<td align="left">685 (9.8%)</td>
 </tr>
 <tr class="even">
-<td>TotChol</td>
-<td>Mean (SD)</td>
-<td>5.07 (1.07)</td>
-<td>5.00 (1.42)</td>
-<td>5.07 (1.08)</td>
-<td>5.06 (1.04)</td>
+<td align="left"></td>
+<td align="left">White</td>
+<td align="left">5,017 (67.2%)</td>
+<td align="left">235 (69.6%)</td>
+<td align="left">3,114 (68.6%)</td>
+<td align="left">1,668 (64.4%)</td>
 </tr>
 <tr class="odd">
-<td>Missing, n (%)</td>
-<td>1,169 (5.6%)</td>
-<td>426 (15.5%)</td>
-<td>480 (5.5%)</td>
-<td>263 (5.4%)</td>
-<td></td>
+<td align="left"></td>
+<td align="left">Other</td>
+<td align="left">1,294 (7.4%)</td>
+<td align="left">67 (6.0%)</td>
+<td align="left">1,029 (9.3%)</td>
+<td align="left">198 (4.0%)</td>
 </tr>
 <tr class="even">
-<td>SmokeNow</td>
-<td>No</td>
-<td>2,779 (24.2%)</td>
-<td>142 (29.1%)</td>
-<td>1,580 (23.2%)</td>
-<td>1,057 (26.0%)</td>
+<td align="left">Education</td>
+<td align="left">8th Grade</td>
+<td align="left">1,321 (6.1%)</td>
+<td align="left">*</td>
+<td align="left">770 (5.9%)</td>
+<td align="left">472 (6.3%)</td>
 </tr>
 <tr class="odd">
-<td>Yes</td>
-<td>2,454 (20.1%)</td>
-<td>102 (19.5%)</td>
-<td>1,594 (21.4%)</td>
-<td>758 (17.6%)</td>
-<td></td>
+<td align="left"></td>
+<td align="left">9 - 11th Grade</td>
+<td align="left">1,787 (11.8%)</td>
+<td align="left">84 (16.8%)</td>
+<td align="left">1,021 (11.3%)</td>
+<td align="left">682 (12.5%)</td>
 </tr>
 <tr class="even">
-<td>Missing</td>
-<td>6,545 (55.7%)</td>
-<td>303 (51.4%)</td>
-<td>3,899 (55.4%)</td>
-<td>2,343 (56.4%)</td>
-<td></td>
+<td align="left"></td>
+<td align="left">High School</td>
+<td align="left">2,595 (21.5%)</td>
+<td align="left">121 (21.1%)</td>
+<td align="left">1,496 (20.2%)</td>
+<td align="left">978 (23.8%)</td>
+</tr>
+<tr class="odd">
+<td align="left"></td>
+<td align="left">Some College</td>
+<td align="left">3,399 (31.3%)</td>
+<td align="left">144 (33.4%)</td>
+<td align="left">1,968 (29.4%)</td>
+<td align="left">1,287 (34.5%)</td>
+</tr>
+<tr class="even">
+<td align="left"></td>
+<td align="left">College Grad</td>
+<td align="left">2,656 (29.3%)</td>
+<td align="left">*</td>
+<td align="left">1,805 (33.0%)</td>
+<td align="left">735 (22.8%)</td>
+</tr>
+<tr class="odd">
+<td align="left"></td>
+<td align="left">Missing</td>
+<td align="left">20 (0.1%)</td>
+<td align="left">*</td>
+<td align="left">*</td>
+<td align="left">*</td>
+</tr>
+<tr class="even">
+<td align="left">TotChol</td>
+<td align="left">Mean (SD)</td>
+<td align="left">5.07 (1.07)</td>
+<td align="left">5.00 (1.42)</td>
+<td align="left">5.07 (1.08)</td>
+<td align="left">5.06 (1.04)</td>
+</tr>
+<tr class="odd">
+<td align="left"></td>
+<td align="left">Missing, n (%)</td>
+<td align="left">1,169 (5.6%)</td>
+<td align="left">426 (15.5%)</td>
+<td align="left">480 (5.5%)</td>
+<td align="left">263 (5.4%)</td>
+</tr>
+<tr class="even">
+<td align="left">SmokeNow</td>
+<td align="left">No</td>
+<td align="left">2,779 (24.2%)</td>
+<td align="left">142 (29.1%)</td>
+<td align="left">1,580 (23.2%)</td>
+<td align="left">1,057 (26.0%)</td>
+</tr>
+<tr class="odd">
+<td align="left"></td>
+<td align="left">Yes</td>
+<td align="left">2,454 (20.1%)</td>
+<td align="left">102 (19.5%)</td>
+<td align="left">1,594 (21.4%)</td>
+<td align="left">758 (17.6%)</td>
+</tr>
+<tr class="even">
+<td align="left"></td>
+<td align="left">Missing</td>
+<td align="left">6,545 (55.7%)</td>
+<td align="left">303 (51.4%)</td>
+<td align="left">3,899 (55.4%)</td>
+<td align="left">2,343 (56.4%)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<div id="example-d-reliability-checks-for-regression-models" class="section level4">
+<h4>Example D: Reliability Checks for Regression Models</h4>
+<p>Beyond descriptive tables, the package provides
+<code>svydiag()</code> to assess the reliability of coefficients from a
+survey-weighted regression model. It calculates key metrics like
+p-values, standard errors, and confidence interval widths.</p>
+<pre class="r"><code># 1. Fit a logistic regression model using the complete-case design
+fit_obesity &lt;- svyglm(
+  ObeseStatus ~ Age + Gender + Race1,
+  design = adult_design_complete,
+  family = quasibinomial()
+)
+
+# 2. Get the reliability diagnostics table for the model
+diagnostics_table &lt;- svydiag(fit_obesity)
+
+# 3. Display the diagnostics table
+knitr::kable(
+  diagnostics_table,
+  caption = &quot;Table 3: Reliability Diagnostics for Obesity Model Coefficients&quot;,
+  digits = 3
+)</code></pre>
+<hr />
+</div>
+</div>
+<div id="example-output-2" class="section level2">
+<h2>📊 Example Output 2</h2>
+<p>Example output table for Example D, which demonstrates the
+<code>svydiag()</code> function.</p>
+<table style="width:100%;">
+<colgroup>
+<col width="10%" />
+<col width="10%" />
+<col width="10%" />
+<col width="10%" />
+<col width="10%" />
+<col width="10%" />
+<col width="10%" />
+<col width="10%" />
+<col width="10%" />
+<col width="10%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="left">Term</th>
+<th align="right">Estimate</th>
+<th align="right">SE</th>
+<th align="right">p.value</th>
+<th align="left">is_significant</th>
+<th align="right">CI_Lower</th>
+<th align="right">CI_Upper</th>
+<th align="right">CI_Width</th>
+<th align="right">RSE_percent</th>
+<th align="left">is_rse_high</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">(Intercept)</td>
+<td align="right">-0.381</td>
+<td align="right">0.109</td>
+<td align="right">0.002</td>
+<td align="left">TRUE</td>
+<td align="right">-0.604</td>
+<td align="right">-0.158</td>
+<td align="right">0.445</td>
+<td align="right">28.486</td>
+<td align="left">FALSE</td>
+</tr>
+<tr class="even">
+<td align="left">Age</td>
+<td align="right">0.008</td>
+<td align="right">0.002</td>
+<td align="right">0.000</td>
+<td align="left">TRUE</td>
+<td align="right">0.005</td>
+<td align="right">0.012</td>
+<td align="right">0.007</td>
+<td align="right">20.782</td>
+<td align="left">FALSE</td>
+</tr>
+<tr class="odd">
+<td align="left">Gendermale</td>
+<td align="right">-0.061</td>
+<td align="right">0.057</td>
+<td align="right">0.294</td>
+<td align="left">FALSE</td>
+<td align="right">-0.179</td>
+<td align="right">0.056</td>
+<td align="right">0.236</td>
+<td align="right">93.470</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="even">
+<td align="left">Race1Hispanic</td>
+<td align="right">-0.493</td>
+<td align="right">0.103</td>
+<td align="right">0.000</td>
+<td align="left">TRUE</td>
+<td align="right">-0.704</td>
+<td align="right">-0.282</td>
+<td align="right">0.422</td>
+<td align="right">20.870</td>
+<td align="left">FALSE</td>
+</tr>
+<tr class="odd">
+<td align="left">Race1Mexican</td>
+<td align="right">-0.225</td>
+<td align="right">0.087</td>
+<td align="right">0.016</td>
+<td align="left">TRUE</td>
+<td align="right">-0.403</td>
+<td align="right">-0.046</td>
+<td align="right">0.357</td>
+<td align="right">38.733</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="even">
+<td align="left">Race1White</td>
+<td align="right">-0.654</td>
+<td align="right">0.081</td>
+<td align="right">0.000</td>
+<td align="left">TRUE</td>
+<td align="right">-0.821</td>
+<td align="right">-0.488</td>
+<td align="right">0.334</td>
+<td align="right">12.421</td>
+<td align="left">FALSE</td>
+</tr>
+<tr class="odd">
+<td align="left">Race1Other</td>
+<td align="right">-1.351</td>
+<td align="right">0.131</td>
+<td align="right">0.000</td>
+<td align="left">TRUE</td>
+<td align="right">-1.620</td>
+<td align="right">-1.082</td>
+<td align="right">0.538</td>
+<td align="right">9.707</td>
+<td align="left">FALSE</td>
 </tr>
 </tbody>
 </table>
 <hr />
 </div>
+<div id="example-e-goodness-of-fit-test-for-survey-models" class="section level2">
+<h2>Example E: Goodness-of-Fit Test for Survey Models</h2>
+<pre class="r"><code># We will use the same survey design and model from the previous example.
+# design = adult_design_complete
+# fit = fit_obesity
+
+# 1. Run the goodness-of-fit test
+gof_results &lt;- svygof(fit_obesity, adult_design_complete)
+
+# 2. Display the results
+knitr::kable(
+  gof_results,
+  caption = &quot;Table 4: Archer-Lemeshow Goodness-of-Fit Test for Obesity Model&quot;
+)</code></pre>
+<hr />
+</div>
+<div id="example-f-design-correct-auc-for-survey-models" class="section level2">
+<h2>Example F: Design-Correct AUC for Survey Models</h2>
+<pre class="r"><code># The svyAUC function requires a replicate-weights design object.
+# 1. Create a replicate design object
+rep_design &lt;- as.svrepdesign(adult_design_complete)
+
+# 2. Fit the model using the new replicate design
+fit_obesity_rep &lt;- svyglm(
+  ObeseStatus ~ Age + Gender + Race1,
+  design = rep_design,
+  family = quasibinomial()
+)
+
+# 3. Calculate the design-correct AUC
+auc_results &lt;- svyAUC(fit_obesity_rep, rep_design)
+
+# 4. Display the results
+knitr::kable(
+  auc_results,
+  caption = &quot;Table 5: Design-Correct AUC for Obesity Model&quot;
+)</code></pre>
+</div>
+<div id="example-g-creating-tables-from-multiply-imputed-data" class="section level2">
+<h2>Example G: Creating Tables from Multiply Imputed Data</h2>
+<p>The <code>svypooled()</code> function is designed to work with pooled
+model results from the mice package. It can produce a “fallacy-safe”
+table showing only the main exposure or a full table with all model
+variables.</p>
+<p>First, we’ll prepare some imputed data and run a pooled regression
+model.</p>
+<div id="data-preparation-modeling" class="section level3">
+<h3>Data Preparation &amp; Modeling</h3>
+<pre class="r"><code># Load required packages
+library(mice)
+
+# Use the built-in `nhanes` dataset and create some missing values
+nhanes_miss &lt;- nhanes
+nhanes_miss$hyp[sample(1:nrow(nhanes_miss), 5)] &lt;- NA
+
+# Perform multiple imputation
+imputed_data &lt;- mice(nhanes_miss, m = 5, seed = 123, printFlag = FALSE)
+
+# Fit a logistic regression model on each imputed dataset and pool the results
+fit &lt;- with(imputed_data, glm(hyp ~ age + bmi + chl, family = &quot;binomial&quot;))
+pooled_model &lt;- pool(fit)</code></pre>
+</div>
+<div id="generate-a-fallacy-safe-table-default" class="section level3">
+<h3>Generate a “Fallacy-Safe” Table (Default)</h3>
+<p>This table only shows the main exposure (age) and lists the
+adjustment variables in a footnote to prevent misinterpretation of
+covariate statistics.</p>
+<pre class="r"><code># Generate the fallacy-safe table
+svypooled(
+  pooled_model = pooled_model,
+  main_exposure = &quot;age&quot;,
+  adj_var_names = c(&quot;bmi&quot;, &quot;chl&quot;),
+  measure = &quot;OR&quot;,
+  title = &quot;Adjusted Odds of Hypertension by Age Group (Fallacy-Safe)&quot;
+)</code></pre>
+</div>
+<div id="generate-a-full-model-table" class="section level3">
+<h3>Generate a Full Model Table</h3>
+<p>This table shows the formatted results for all variables included in
+the model.</p>
+<pre class="r"><code># Generate the full table
+svypooled(
+  pooled_model = pooled_model,
+  main_exposure = &quot;age&quot;,
+  adj_var_names = c(&quot;bmi&quot;, &quot;chl&quot;),
+  measure = &quot;OR&quot;,
+  title = &quot;Adjusted Odds of Hypertension (Full Model)&quot;,
+  fallacy_safe = FALSE
+)</code></pre>
+</div>
+</div>
+<div id="example-h-analyzing-interaction-effects" class="section level2">
+<h2>Example H: Analyzing Interaction Effects</h2>
+<p>Demonstrating the calculation of additive interaction measures (RERI,
+AP, S) for the interaction between Race and Obesity status on
+Hypertension risk (defined as Systolic BP &gt;= 130 mmHg).</p>
+<pre class="r"><code>library(survey)
+library(NHANES)
+library(dplyr)
+library(tidyr)
+library(msm)
+
+data(NHANESraw)
+
+vars_needed &lt;- c(&quot;Age&quot;, &quot;Race1&quot;, &quot;BPSysAve&quot;, &quot;BMI&quot;, &quot;ObeseStatus&quot;, &quot;Hypertension_130&quot;,
+                 &quot;SDMVPSU&quot;, &quot;SDMVSTRA&quot;, &quot;WTMEC2YR&quot;)
+
+nhanes_adults_processed &lt;- NHANESraw %&gt;%
+  filter(Age &gt;= 20) %&gt;%
+  mutate(
+    ObeseStatus = factor(ifelse(BMI &gt;= 30, &quot;Obese&quot;, &quot;Not Obese&quot;),
+                         levels = c(&quot;Not Obese&quot;, &quot;Obese&quot;)),
+    Hypertension_130 = factor(ifelse(BPSysAve &gt;= 130, &quot;Yes&quot;, &quot;No&quot;),
+                              levels = c(&quot;No&quot;, &quot;Yes&quot;)),
+    Race1 = relevel(as.factor(Race1), ref = &quot;White&quot;)
+  ) %&gt;%
+  select(all_of(vars_needed)) %&gt;%
+  drop_na()
+
+adult_design_binary &lt;- svydesign(
+  id = ~SDMVPSU, strata = ~SDMVSTRA, weights = ~WTMEC2YR,
+  nest = TRUE, data = nhanes_adults_processed
+)
+
+# --- Fit Interaction Term Model ---
+interaction_model_logit &lt;- svyglm(
+  Hypertension_130 ~ Race1 * ObeseStatus + Age,
+  design = adult_design_binary, family = quasibinomial()
+)
+
+# --- Fit Joint Variable Model ---
+adult_design_binary &lt;- update(adult_design_binary,
+                              Race1_ObeseStatus = interaction(Race1, ObeseStatus, sep = &quot;_&quot;, drop = TRUE)
+)
+adult_design_binary &lt;- update(adult_design_binary,
+                              Race1_ObeseStatus = relevel(Race1_ObeseStatus, ref = &quot;White_Not Obese&quot;)
+)
+joint_model_logit &lt;- svyglm(
+  Hypertension_130 ~ Race1_ObeseStatus + Age,
+  design = adult_design_binary, family = quasibinomial()
+)
+
+# --- 2. Calculate Additive Interactions using addintlist ---
+all_interactions_table &lt;- addintlist(
+  model = interaction_model_logit,
+  factor1_name = &quot;Race1&quot;,
+  factor2_name = &quot;ObeseStatus&quot;,
+  measures = &quot;all&quot;, # Calculate RERI, AP, and S
+  digits = 3 # Round to 3 decimal places
+)
+
+print(&quot;--- Additive Interaction Results (RERI, AP, S) ---&quot;)
+print(all_interactions_table, n = 50)
+
+# --- 3. Calculate Joint Effects using get_joint_effects ---
+# Calculates OR for each combo (e.g., Black+Obese) vs. reference (White+Not Obese)
+# using the interaction model output
+joint_effects_ratio &lt;- get_joint_effects(
+  interaction_model = interaction_model_logit,
+  factor1_name = &quot;Race1&quot;,
+  factor2_name = &quot;ObeseStatus&quot;,
+  scale = &quot;ratio&quot;, # Get ORs
+  digits = 2
+)
+print(&quot;--- Joint Effects (OR Scale) from Interaction Model ---&quot;)
+print(joint_effects_ratio, n=20)
+
+# --- 4. Calculate Simple Effects using inteffects ---
+# Calculates stratum-specific ORs (e.g., OR for Obese vs Not Obese within Black race)
+# using the joint variable model output
+f1_levels &lt;- levels(adult_design_binary$variables$Race1)
+f2_levels &lt;- levels(adult_design_binary$variables$ObeseStatus)
+
+simple_effects_ratio &lt;- inteffects(
+  joint_model = joint_model_logit,
+  joint_var_name = &quot;Race1_ObeseStatus&quot;,
+  factor1_name = &quot;Race1&quot;,
+  factor2_name = &quot;ObeseStatus&quot;,
+  factor1_levels = f1_levels,
+  factor2_levels = f2_levels,
+  level_separator = &quot;_&quot;,
+  scale = &quot;ratio&quot;, # Get ORs
+  digits = 2
+)
+print(&quot;--- Simple Effects (OR Scale) from Joint Model ---&quot;)
+print(simple_effects_ratio, n=20)</code></pre>
+</div>
 <div id="contributing" class="section level2">
 <h2>🤝 Contributing</h2>
 <p>Contributions are welcome! If you find a bug or have suggestions for
-improvements, please open an issue or submit a pull request on the
-GitHub repository.</p>
+improvements, please email to the maintainer.</p>
 <hr />
 </div>
 <div id="license" class="section level2">
