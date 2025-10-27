@@ -1,0 +1,66 @@
+---
+title: "Interaction Analysis Results by Reporting Guideline"
+output: html_document
+params:
+  data_list: NULL
+  ref_level1: "ref1"
+  ref_level2: "ref2"
+  factor1_name: "Factor 1"
+  factor2_name: "Factor 2"
+  ref_group_str: "Reference group info..."
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(knitr)
+library(kableExtra)
+
+# Access the passed data
+panelA_table <- params$data_list$joint_effects
+panelB_table <- params$data_list$stratum_specific_effects
+panelC_table <- params$data_list$additive_interaction
+panelD_table <- params$data_list$model_details
+```
+
+Interaction Analysis Results by Reporting Guideline
+
+## Panel A. Joint effects vs a single reference
+`r params$ref_group_str`
+
+```{r}
+kable(panelA_table,
+      caption = sprintf("Panel A. Joint effects vs %s & %s", 
+                        params$ref_level1, params$ref_level2),
+      align = c("l", "l", "r", "c", "c")) %>%
+  kable_styling(full_width = FALSE)
+```
+
+## Panel B. Stratum-specific effects (simple effects)
+
+```{r}
+kable(panelB_table,
+      caption = "Panel B. Stratum-specific (simple) effects",
+      col.names = c("Comparison", "OR/HR/Coeff", "95% CI", "p"),
+      align = c("l", "r", "c", "c")) %>%
+  kable_styling(full_width = FALSE)
+```
+
+## Panel C. Additive-scale interaction indices
+Indices computed on the OR/HR scale with joint reference `r params$ref_level1` & `r params$ref_level2`.
+
+```{r}
+kable(panelC_table,
+      caption = "Panel C. Additive interaction measures (RERI, AP, S) with 95% CI",
+      col.names = c(params$factor1_name, params$factor2_name, "RERI", "95% CI", "AP", "95% CI", "S", "95% CI"),
+      align = c("l", "l", "r", "c", "r", "c", "r", "c")) %>%
+  kable_styling(full_width = FALSE)
+```
+
+## Panel D. Model specification and notes
+
+```{r}
+kable(panelD_table,
+      col.names = c("Item", "Description"),
+      align = c("l", "l")) %>%
+  kable_styling(full_width = TRUE)
+```
