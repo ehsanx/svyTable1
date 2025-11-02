@@ -41,6 +41,7 @@
 #' @importFrom stringr str_extract str_remove
 #' @importFrom knitr kable
 #' @importFrom kableExtra kable_styling pack_rows footnote
+#' @importFrom rlang .data
 #'
 #' @export
 #'
@@ -57,7 +58,7 @@
 #' # Note: We convert the outcome 'Obese' to a numeric 0/1 variable for svyglm.
 #' data(NHANESraw, package = "NHANES")
 #' nhanes_analytic <- NHANESraw %>%
-#'   filter(Age >= 20 & WTMEC2YR > 0) %>%
+#'   dplyr::filter(Age >= 20 & WTMEC2YR > 0) %>%
 #'   mutate(
 #'     Obese_numeric = ifelse(BMI >= 30, 1, 0),
 #'     AgeCat = cut(Age, breaks = c(19, 39, 59, 80), labels = c("20-39", "40-59", "60-80")),
@@ -104,11 +105,11 @@
 #' )
 #' }
 svypooled <- function(pooled_model,
-                                   main_exposure,
-                                   adj_var_names,
-                                   measure = "OR",
-                                   title = "Adjusted Model Results",
-                                   fallacy_safe = TRUE) {
+                      main_exposure,
+                      adj_var_names,
+                      measure = "OR",
+                      title = "Adjusted Model Results",
+                      fallacy_safe = TRUE) {
 
   # Ensure required packages are available
   if (!requireNamespace("dplyr", quietly = TRUE)) stop("Package 'dplyr' is required.")
@@ -125,24 +126,24 @@ svypooled <- function(pooled_model,
   pattern <- paste(all_vars, collapse = "|")
 
   processed_results <- summary_df %>%
-    dplyr::select(term, estimate, conf.low, conf.high, p.value) %>%
+    dplyr::select(.data$term, .data$estimate, .data$conf.low, .data$conf.high, .data$p.value) %>%
     dplyr::mutate(
-      group = stringr::str_extract(term, pattern),
-      Characteristic = stringr::str_remove(term, pattern),
-      Estimate_CI = sprintf("%.2f (%.2f, %.2f)", estimate, conf.low, conf.high),
+      group = stringr::str_extract(.data$term, pattern),
+      Characteristic = stringr::str_remove(.data$term, pattern),
+      Estimate_CI = sprintf("%.2f (%.2f, %.2f)", .data$estimate, .data$conf.low, .data$conf.high),
       p_value_formatted = dplyr::case_when(
-        p.value < 0.001 ~ "<0.001",
-        TRUE ~ sprintf("%.3f", p.value)
+        .data$p.value < 0.001 ~ "<0.001",
+        TRUE ~ sprintf("%.3f", .data$p.value)
       )
     ) %>%
-    dplyr::select(group, Characteristic, Estimate_CI, p_value_formatted)
+    dplyr::select(.data$group, .data$Characteristic, .data$Estimate_CI, .data$p_value_formatted)
 
   # Conditionally filter for fallacy-safe output
   if (fallacy_safe) {
     if (!main_exposure %in% processed_results$group) {
       stop(paste("Main exposure '", main_exposure, "' not found in model terms.", sep = ""))
     }
-    results_to_display <- processed_results %>% dplyr::filter(group == main_exposure)
+    results_to_display <- processed_results %>% dplyr::filter(.data$group == main_exposure)
     footnote_text <- paste("Adjusted for:", paste(adj_var_names, collapse = ", "))
   } else {
     results_to_display <- processed_results

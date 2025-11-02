@@ -1,6 +1,6 @@
 Package: svyTable1
 Title: Create Survey-Weighted Descriptive Statistics and Diagnostic Tables
-Version: 0.9.0
+Version: 0.10.0
 Authors@R: c(person("Ehsan", "Karim",
                  email = "ehsan.karim@gmail.com",
                  role = c("aut", "cre")),
@@ -10,33 +10,40 @@ Authors@R: c(person("Ehsan", "Karim",
 Description: A tool to create publication-ready tables from complex 
     survey data, including descriptive summaries and multi-panel 
     interaction reports. It also provides a suite of functions to 
-    evaluate survey-weighted regression models, including coefficient 
-    diagnostics, goodness-of-fit tests, and design-correct AUC 
-    calculations.
+    evaluate survey-weighted regression models and survey-weighted 
+    survival plots, including coefficient diagnostics, 
+    goodness-of-fit tests, and design-correct AUC calculations.
 License: MIT + file LICENSE
 Encoding: UTF-8
 RoxygenNote: 7.3.3
 Imports: 
     dplyr,
+    ggplot2,
     kableExtra,
     knitr,
     magrittr,
     msm,
+    patchwork,
     Publish,
+    purrr,
     rlang,
     rmarkdown,
     rstudioapi,
+    scales,
     stats,
     stringr,
+    survival,
     survey,
     tibble,
     tidyr,
     utils,
     WeightedROC
 Suggests: 
-    ggplot2,
     mice,
     NHANES,
     testthat (>= 3.0.0)
 VignetteBuilder: knitr
 Config/testthat/edition: 3
+Depends: 
+    R (>= 3.5)
+LazyData: true

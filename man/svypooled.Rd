@@ -70,7 +70,7 @@ library(NHANES)
 # Note: We convert the outcome 'Obese' to a numeric 0/1 variable for svyglm.
 data(NHANESraw, package = "NHANES")
 nhanes_analytic <- NHANESraw \%>\%
-  filter(Age >= 20 & WTMEC2YR > 0) \%>\%
+  dplyr::filter(Age >= 20 & WTMEC2YR > 0) \%>\%
   mutate(
     Obese_numeric = ifelse(BMI >= 30, 1, 0),
     AgeCat = cut(Age, breaks = c(19, 39, 59, 80), labels = c("20-39", "40-59", "60-80")),

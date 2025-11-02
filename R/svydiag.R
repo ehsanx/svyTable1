@@ -43,6 +43,7 @@
 #' @importFrom dplyr mutate select
 #' @importFrom tibble tibble
 #' @importFrom stats confint coef vcov
+#' @importFrom rlang .data
 #'
 #' @export
 #'
@@ -122,23 +123,23 @@ svydiag <- function(fit, p_threshold = 0.05, rse_threshold = 30) {
   # 3. Calculate derived metrics, add flags, and finalize the output
   reliability_df <- reliability_df %>%
     dplyr::mutate(
-      RSE_percent = (SE / abs(Estimate)) * 100,
-      CI_Width = CI_Upper - CI_Lower,
-      is_significant = p.value < p_threshold,
-      is_rse_high = RSE_percent >= rse_threshold
+      RSE_percent = (.data$SE / abs(.data$Estimate)) * 100,
+      CI_Width = .data$CI_Upper - .data$CI_Lower,
+      is_significant = .data$p.value < p_threshold,
+      is_rse_high = .data$RSE_percent >= rse_threshold
     ) %>%
     # Reorder and select the final columns for a clean output
     dplyr::select(
-      Term,
-      Estimate,
-      SE,
-      p.value,
-      is_significant,
-      CI_Lower,
-      CI_Upper,
-      CI_Width,
-      RSE_percent,
-      is_rse_high
+      .data$Term,
+      .data$Estimate,
+      .data$SE,
+      .data$p.value,
+      .data$is_significant,
+      .data$CI_Lower,
+      .data$CI_Upper,
+      .data$CI_Width,
+      .data$RSE_percent,
+      .data$is_rse_high
     )
 
   return(reliability_df)

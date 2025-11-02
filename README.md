@@ -13,6 +13,7 @@ Developed for common tasks in epidemiology and public health, the package integr
 - **Best Practice Reporting:** Defaults to the *“mixed mode”* display, showing unweighted sample sizes (N) alongside weighted percentages (%) or means.
 - **Built-in Reliability Checks:** Automatically apply NCHS Data Presentation Standards for Proportions to flag or suppress unreliable estimates.
 - **Flexible Output Modes:** Easily switch between `"mixed"`, `"weighted"`, and `"unweighted"` summaries.
+- **Survival Plotting**: Provides `svykmplot()` to create publication-ready, survey-weighted Kaplan-Meier plots with attached number-at-risk tables.
 - **Readability:** Option to format large numbers with commas for improved readability.
 - **Regression Diagnostics**: Includes the `svydiag()` helper function to assess the reliability of model coefficients.
 - **Goodness-of-Fit Testing**: Provides `svygof()` to perform the Archer-Lemeshow goodness-of-fit test for survey logistic regression models.
@@ -400,6 +401,51 @@ simple_effects_ratio <- inteffects(
 print("--- Simple Effects (OR Scale) from Joint Model ---")
 print(simple_effects_ratio, n=20)
 ```  
+
+### Example I: Survey-Weighted Survival Plots
+
+The package also includes `svykmplot()` to generate publication-ready, survey-weighted Kaplan-Meier plots with attached number-at-risk tables. This example uses the `nhanes_mortality` dataset included with the package.
+
+```r
+# Load survival package for Surv() and ggplot2 for labs()
+library(survival) 
+library(ggplot2)
+
+# Load the package's mortality dataset
+data(nhanes_mortality)
+
+# 1. Create the main survey design object
+analytic_design <- svydesign(
+  strata = ~strata,
+  id = ~psu,
+  weights = ~survey_weight,
+  data = nhanes_mortality,
+  nest = TRUE
+)
+
+# 2. Create a subsetted design for females
+design_female <- subset(analytic_design, sex == "Female")
+
+# 3. Define the formula
+km_formula <- Surv(stime, status) ~ caff
+
+# 4. Define a 4-color palette
+distinct_palette <- c("#377EB8", "#FF7F00", "#4DAF4A", "#E41A1C")
+
+# 5. Run the function
+km_results_female <- svykmplot(
+  formula = km_formula,
+  design = design_female,
+  legend_title = "Caffeine Consumption",
+  time_unit = "days", 
+  time_breaks = seq(0, 240, by = 60),
+  palette = distinct_palette,
+  show_pval = TRUE
+)
+
+# 6. Display the plot
+km_results_female$plot
+```
 
 ## 🤝 Contributing
 

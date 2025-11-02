@@ -660,6 +660,63 @@ knitr::kable(
 )
 ```
 
+## 6. Visualizing Survey-Weighted Survival Data
+
+A common task in health research is visualizing time-to-event data. The `svykmplot()` function is designed to create publication-ready, survey-weighted Kaplan-Meier survival plots, complete with an attached "Number at Risk" table that correctly reflects the unweighted counts at specific time points.
+
+### Example: Plotting Survival from NHANES Mortality Data
+
+This example uses the `nhanes_mortality` dataset, which is included in the `svyTable1` package. This dataset is based on [the 1999-2010 NHANES data linked to mortality follow-up data](https://ehsanx.github.io/EpiMethods/nonbinary2a.html). We will plot survival for diabetic women, stratified by caffeine consumption.
+
+```{r km-plot, fig.width=8, fig.height=6, fig.cap="Survey-weighted Kaplan-Meier plot for female mortality by caffeine consumption."}
+# 1. Load the package's built-in mortality data
+# (This data is already processed, as shown in the package documentation)
+data(nhanes_mortality)
+
+# 2. Create the main survey design object
+analytic_design <- svydesign(
+  strata = ~strata,
+  id = ~psu,
+  weights = ~survey_weight,
+  data = nhanes_mortality,
+  nest = TRUE
+)
+
+# 3. Create a subsetted design for females
+design_female <- subset(analytic_design, sex == "Female")
+
+# 4. Define the formula
+# We need the survival package for this
+library(survival)
+km_formula <- Surv(stime, status) ~ caff
+
+# 5. Define a 4-color palette
+distinct_palette <- c("#377EB8", "#FF7F00", "#4DAF4A", "#E41A1C")
+
+# 6. Run the function
+km_results_female <- svykmplot(
+  formula = km_formula,
+  design = design_female,
+  legend_title = "Caffeine Consumption",
+  time_unit = "days", 
+  time_breaks = seq(0, 240, by = 60),
+  palette = distinct_palette,
+  show_pval = TRUE,
+  show_censor_marks = TRUE
+)
+
+km_results_female$plot
+```
+
+The function returns a list, with the `plot` object being the combined `ggplot` and the `table` object being a clean data frame of the number-at-risk counts.
+
+```{r kmtable}
+# You can also print the number-at-risk table directly
+knitr::kable(
+  km_results_female$table,
+  caption = "Number at Risk for Female Mortality Plot"
+)
+```
 
 
 ## References
