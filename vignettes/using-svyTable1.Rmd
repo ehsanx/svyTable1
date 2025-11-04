@@ -623,11 +623,17 @@ knitr::kable(simple_effects_log,
   digits = 3)
 ```
 
-## 5. Automated Three-Panel Report
+## 5. Automated Multi-Panel Report
 
-The `reportint()` function is the recommended high-level wrapper for interaction analysis. It takes the *single* fitted interaction model (`interaction_model_logit`) and automatically generates all three standard report tables (Joint Effects, Simple Effects, and Additive Interaction) in one step. This is a significant simplification of the manual workflow shown in the following sections.
+The `reportint()` function is the recommended high-level wrapper for interaction analysis. It takes the single fitted interaction model (`interaction_model_logit`) and automatically generates all required components for a full analysis.
 
-The function can return a list of tables (for use in vignettes or R scripts) or render a full, standalone HTML report directly to the RStudio Viewer.
+The function returns a list containing two types of objects:
+
+- **Raw Data Panels:** Separate tables for `joint_effects`, `stratum_specific_effects`, `additive_interaction`, `multiplicative_scale`, and `model_details` for custom analysis.
+
+- **Publication-Ready Tables:** Two pre-formatted, single, stacked tables (`$effect_modification_report` and `$Interaction_report`) that assemble the raw data according to the reporting guidelines.
+
+The main list output is ideal for vignettes, while `output = "viewer"` renders a full HTML report. Below, we demonstrate the new single-table outputs.
 
 ```{r reportint-wrapper, fig.cap="Figure 2: Example of reportint() HTML output."}
 # Generate the complete report in one call
@@ -657,6 +663,27 @@ knitr::kable(
 knitr::kable(
   interaction_report$model_details,
   caption = "Panel D (Model Details) from reportint()"
+)
+
+knitr::kable(
+  interaction_report$multiplicative_scale,
+  caption = "Multiplicative Interaction (RORs) from reportint()"
+)
+
+# Display the single, publication-ready table for Effect Modification
+knitr::kable(
+  interaction_report$effect_modification_report,
+  caption = "Publication Report: Effect Modification Analysis (from reportint())",
+  # Left-align columns to handle empty cells in stacked table
+  align = 'l' 
+)
+
+# Display the single, publication-ready table for a Full Interaction
+knitr::kable(
+  interaction_report$Interaction_report,
+  caption = "Publication Report: Full Interaction Analysis (from reportint())",
+  # Left-align columns
+  align = 'l' 
 )
 ```
 

@@ -51,9 +51,10 @@ interaction terms.}
 }
 \value{
 If `output = "list"`, returns a named list of data frames.
-For all other outputs, invisibly returns the same named list.
 The list contains: `joint_effects`, `stratum_specific_effects`,
-`additive_interaction`, and `model_details` (as a tibble).
+`additive_interaction`, `multiplicative_scale`, `model_details`,
+and two publication-ready summary tables:
+`effect_modification_report` and `Interaction_report`.
 }
 \description{
 This wrapper function automates the creation of a three-panel interaction
@@ -75,7 +76,8 @@ if (requireNamespace("svyTable1", quietly = TRUE) &&
     requireNamespace("survey", quietly = TRUE) &&
     requireNamespace("NHANES", quietly = TRUE) &&
     requireNamespace("dplyr", quietly = TRUE) &&
-    requireNamespace("tidyr", quietly = TRUE)) {
+    requireNamespace("tidyr", quietly = TRUE) &&
+    requireNamespace("broom", quietly = TRUE)) {
 
   library(svyTable1)
   library(Publish)
@@ -83,6 +85,7 @@ if (requireNamespace("svyTable1", quietly = TRUE) &&
   library(NHANES)
   library(dplyr)
   library(tidyr)
+  library(broom)
 
   # --- 1. Data Preparation (NHANES Example) ---
   data(NHANESraw)
@@ -116,16 +119,19 @@ if (requireNamespace("svyTable1", quietly = TRUE) &&
 
   # --- 3. Run the wrapper function ---
 
-  # The function will auto-detect "Race1" and "ObeseStatus"
-  # from the single interaction term.
-  # output = "list" is now the default
   report_list <- reportint(
     interaction_model = interaction_model_fit
   )
 
-  # You can then print the tables:
+  # You can then print the individual panel tables:
   # print(report_list$joint_effects)
   # print(report_list$stratum_specific_effects)
+
+  # --- OR ---
+
+  # Print the single, publication-ready summary tables:
+  # print(report_list$effect_modification_report)
+  # print(report_list$Interaction_report)
 
 }
 }

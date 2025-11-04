@@ -35,14 +35,15 @@
 #'
 #' @return
 #' If `output = "list"`, returns a named list of data frames.
-#' For all other outputs, invisibly returns the same named list.
 #' The list contains: `joint_effects`, `stratum_specific_effects`,
-#' `additive_interaction`, and `model_details` (as a tibble).
+#' `additive_interaction`, `multiplicative_scale`, `model_details`,
+#' and two publication-ready summary tables:
+#' `effect_modification_report` and `Interaction_report`.
 #'
 #' @details
 #' This function requires the 'svyTable1' and 'Publish' packages.
 #'
-#' @importFrom dplyr mutate if_else select left_join rename
+#' @importFrom dplyr mutate if_else select left_join rename bind_rows tibble
 #' @importFrom tidyr pivot_wider
 #' @importFrom rlang sym .data
 #' @importFrom stats pnorm formula terms
@@ -51,6 +52,7 @@
 #' @importFrom tibble tibble
 #' @importFrom Publish publish
 #' @importFrom rstudioapi isAvailable viewer
+#' @importFrom broom tidy
 #'
 #' @export
 #'
@@ -62,7 +64,8 @@
 #'     requireNamespace("survey", quietly = TRUE) &&
 #'     requireNamespace("NHANES", quietly = TRUE) &&
 #'     requireNamespace("dplyr", quietly = TRUE) &&
-#'     requireNamespace("tidyr", quietly = TRUE)) {
+#'     requireNamespace("tidyr", quietly = TRUE) &&
+#'     requireNamespace("broom", quietly = TRUE)) {
 #'
 #'   library(svyTable1)
 #'   library(Publish)
@@ -70,6 +73,7 @@
 #'   library(NHANES)
 #'   library(dplyr)
 #'   library(tidyr)
+#'   library(broom)
 #'
 #'   # --- 1. Data Preparation (NHANES Example) ---
 #'   data(NHANESraw)
@@ -103,16 +107,19 @@
 #'
 #'   # --- 3. Run the wrapper function ---
 #'
-#'   # The function will auto-detect "Race1" and "ObeseStatus"
-#'   # from the single interaction term.
-#'   # output = "list" is now the default
 #'   report_list <- reportint(
 #'     interaction_model = interaction_model_fit
 #'   )
 #'
-#'   # You can then print the tables:
+#'   # You can then print the individual panel tables:
 #'   # print(report_list$joint_effects)
 #'   # print(report_list$stratum_specific_effects)
+#'
+#'   # --- OR ---
+#'
+#'   # Print the single, publication-ready summary tables:
+#'   # print(report_list$effect_modification_report)
+#'   # print(report_list$Interaction_report)
 #'
 #' }
 #' }
@@ -226,6 +233,10 @@ reportint <- function(interaction_model,
 }
 
 
+# ==============================================================================
+# INTERNAL HELPER FUNCTIONS
+# ==============================================================================
+
 #' Internal Helper to Generate Interaction Report Data
 #' (Not Exported)
 #'
@@ -239,6 +250,11 @@ reportint <- function(interaction_model,
                                      digits_additive = 3,
                                      conf.level = 0.95,
                                      verbose = FALSE) {
+
+  # --- 1. Package Checks ---
+  if (!requireNamespace("broom", quietly = TRUE)) {
+    stop("Package 'broom' is required to extract multiplicative interaction terms.", call. = FALSE)
+  }
 
   # --- Helper Formatting Functions ---
   format_p_value <- function(p) {
@@ -288,10 +304,33 @@ reportint <- function(interaction_model,
   ref_level1 <- f1_levels[1]
   ref_level2 <- f2_levels[1]
 
-  # --- 3. Fit Models ---
+  # --- 3. Get Model Details (Moved Up) ---
+  if (verbose) message("Extracting model details...")
+
+  all_vars <- all.vars(stats::formula(interaction_model))
+  outcome_formula <- stats::terms(interaction_model)[[2]]
+
+  if (length(outcome_formula) > 1 && (outcome_formula[[1]] == "Surv" || outcome_formula[[1]] == "cbind")) {
+    outcome <- paste(deparse(outcome_formula), collapse = "")
+  } else {
+    outcome <- all_vars[1]
+  }
+
+  adj_vars <- all_vars[!all_vars %in% c(as.character(outcome_formula), outcome, factor1_name, factor2_name)]
+  adj_vars <- adj_vars[!adj_vars %in% all.vars(outcome_formula)]
+
+  model_class <- class(interaction_model)[1]
+  model_type_str <- switch(model_class,
+                           "svyglm" = "survey-weighted logistic regression",
+                           "glm" = "logistic regression",
+                           "svycoxph" = "survey-weighted Cox regression",
+                           "coxph" = "Cox regression",
+                           paste("model of type", model_class))
+
+  # --- 4. Fit Models ---
   if (verbose) message("Model provided. Skipping internal fitting.")
 
-  # --- 4. Generate & Format Panel A ---
+  # --- 5. Generate & Format Panel A ---
   if (verbose) message("Generating Panel A data...")
   panelA_data_ratio <- jointeffects(
     interaction_model, factor1_name, factor2_name,
@@ -325,7 +364,7 @@ reportint <- function(interaction_model,
       p = .data$p_str
     )
 
-  # --- 5. Generate & Format Panel B ---
+  # --- 6. Generate & Format Panel B ---
   if (verbose) message("Generating Panel B data...")
 
   ci_format_str <- "(%s, %s)"
@@ -359,7 +398,7 @@ reportint <- function(interaction_model,
     dplyr::select(.data$Comparison, .data$Estimate, .data$`95% CI`, .data$p)
 
 
-  # --- 6. Generate & Format Panel C ---
+  # --- 7. Generate & Format Panel C ---
   if (verbose) message("Generating Panel C data...")
   panelC_data_raw <- addintlist(
     model = interaction_model,
@@ -393,28 +432,40 @@ reportint <- function(interaction_model,
       `S 95% CI` = .data$S_CI_str
     )
 
-  # --- 7. Generate Panel D Notes ---
-  if (verbose) message("Generating Panel D notes...")
+  # --- 8. Generate Multiplicative Interaction ---
+  if (verbose) message("Generating Multiplicative Interaction data...")
 
-  all_vars <- all.vars(stats::formula(interaction_model))
-  outcome_formula <- stats::terms(interaction_model)[[2]]
+  # Tidy the model, exponentiate to get RORs
+  tidy_model <- broom::tidy(interaction_model, conf.int = TRUE, conf.level = conf.level, exponentiate = TRUE)
 
-  if (length(outcome_formula) > 1 && (outcome_formula[[1]] == "Surv" || outcome_formula[[1]] == "cbind")) {
-    outcome <- paste(deparse(outcome_formula), collapse = "")
-  } else {
-    outcome <- all_vars[1]
+  # Filter for interaction terms (containing ":")
+  multiplicative_terms <- tidy_model %>%
+    dplyr::filter(grepl(":", .data$term))
+
+  # Filter out interactions with adjustment variables (if any)
+  if (length(adj_vars) > 0) {
+    adj_vars_pattern <- paste(adj_vars, collapse = "|")
+    multiplicative_terms <- multiplicative_terms %>%
+      dplyr::filter(!grepl(adj_vars_pattern, .data$term))
   }
 
-  adj_vars <- all_vars[!all_vars %in% c(as.character(outcome_formula), outcome, factor1_name, factor2_name)]
-  adj_vars <- adj_vars[!adj_vars %in% all.vars(outcome_formula)]
+  # Format the table
+  multiplicative_table <- multiplicative_terms %>%
+    dplyr::mutate(
+      ROR_str = sprintf(paste0("%.", digits_ratio, "f"), .data$estimate),
+      CI_str = format_ci(.data$conf.low, .data$conf.high, digits = digits_ratio),
+      p_str = format_p_value(.data$p.value)
+    ) %>%
+    dplyr::select(
+      InteractionTerm = .data$term,
+      ROR = .data$ROR_str,
+      `95% CI` = .data$CI_str,
+      p = .data$p_str
+    )
 
-  model_class <- class(interaction_model)[1]
-  model_type_str <- switch(model_class,
-                           "svyglm" = "survey-weighted logistic regression",
-                           "glm" = "logistic regression",
-                           "svycoxph" = "survey-weighted Cox regression",
-                           "coxph" = "Cox regression",
-                           paste("model of type", model_class))
+
+  # --- 9. Generate Panel D Notes ---
+  if (verbose) message("Generating Panel D notes...")
 
   adj_vars_str_tibble <- if (length(adj_vars) == 0) "`None`" else paste(paste0("`", adj_vars, "`"), collapse = ", ")
 
@@ -437,7 +488,37 @@ reportint <- function(interaction_model,
     )
   )
 
-  # --- 8. Create Final Output List ---
+  # --- 10. ASSEMBLE SINGLE REPORT TABLES ---
+  if (verbose) message("Assembling final report tables...")
+
+  # Get the subset of Panel B for the EM report
+  # This finds the stratum-specific effects of factor2 *within* factor1
+  em_panelB_subset <- panelB_table %>%
+    dplyr::filter(grepl(paste0(factor2_name, ".*", factor1_name), .data$Comparison))
+
+  # Create the final, single, stacked tables
+  em_report_table <- .format_report_table(
+    factor1_name = factor1_name,
+    factor2_name = factor2_name,
+    panelA = panelA_table,
+    panelB = em_panelB_subset, # <-- Use subset
+    panelC = panelC_table,
+    panelM = multiplicative_table,
+    estimate_col_name = estimate_col_name
+  )
+
+  int_report_table <- .format_report_table(
+    factor1_name = factor1_name,
+    factor2_name = factor2_name,
+    panelA = panelA_table,
+    panelB = panelB_table, # <-- Use full table
+    panelC = panelC_table,
+    panelM = multiplicative_table,
+    estimate_col_name = estimate_col_name
+  )
+
+
+  # --- 11. Create Final Output List ---
 
   # Data for Rmd template params
   model_details_internal <- list(
@@ -450,12 +531,126 @@ reportint <- function(interaction_model,
   )
 
   output_list <- list(
+    # --- Raw Data Panels ---
     joint_effects = panelA_table,
     stratum_specific_effects = panelB_table,
     additive_interaction = panelC_table,
+    multiplicative_scale = multiplicative_table,
     model_details = model_details_table,
+
+    # --- Final Formatted Report Tables ---
+    effect_modification_report = em_report_table,
+    Interaction_report = int_report_table,
+
+    # --- Internal Data ---
     model_details_internal = model_details_internal # Helper list for rendering
   )
 
   return(output_list)
 }
+
+
+#' Internal Helper to Format Stacked Report Table
+#' (Not Exported)
+#'
+#' @param factor1_name Name of factor 1
+#' @param factor2_name Name of factor 2
+#' @param panelA Joint effects table
+#' @param panelB Stratum-specific effects table (full or subset)
+#' @param panelC Additive interaction table
+#' @param panelM Multiplicative interaction table
+#' @param estimate_col_name Name of the estimate column (e.g., "OddsRatio")
+#' @return A single formatted data.frame
+#' @noRd
+.format_report_table <- function(factor1_name,
+                                 factor2_name,
+                                 panelA,
+                                 panelB,
+                                 panelC,
+                                 panelM,
+                                 estimate_col_name) {
+
+  # Standardize column names for binding
+  # Using 5 columns: Characteristic, Estimate, 95% CI, p-value, ...
+  cols_needed <- c("Characteristic", "Estimate", "95% CI", "p-value")
+  cols_panelC <- c("Characteristic", "RERI", "RERI 95% CI", "AP", "AP 95% CI", "S", "S 95% CI")
+
+  # 1. Format Panel A
+  panelA_fmt <- panelA %>%
+    dplyr::mutate(
+      Characteristic = paste0(.data[[factor1_name]], " & ", .data[[factor2_name]])
+    ) %>%
+    dplyr::select(
+      "Characteristic",
+      Estimate = .data$OR,
+      `95% CI` = .data$`95% CI`,
+      `p-value` = .data$p
+    )
+
+  # 2. Format Panel B
+  panelB_fmt <- panelB %>%
+    dplyr::select(
+      Characteristic = .data$Comparison,
+      Estimate = .data$Estimate,
+      `95% CI` = .data$`95% CI`,
+      `p-value` = .data$p
+    )
+
+  # 3. Format Panel M (Multiplicative)
+  panelM_fmt <- panelM %>%
+    dplyr::select(
+      Characteristic = .data$InteractionTerm,
+      Estimate = .data$ROR,
+      `95% CI` = .data$`95% CI`,
+      `p-value` = .data$p
+    )
+
+  # 4. Format Panel C (Additive)
+  panelC_fmt <- panelC %>%
+    dplyr::mutate(
+      Characteristic = paste0(.data[[factor1_name]], " vs ", .data[[factor2_name]])
+    ) %>%
+    dplyr::select(
+      "Characteristic",
+      RERI = .data$RERI,
+      `RERI 95% CI` = .data$`RERI 95% CI`,
+      AP = .data$AP,
+      `AP 95% CI` = .data$`AP 95% CI`,
+      S = .data$S,
+      `S 95% CI` = .data$`S 95% CI`
+    )
+
+  # 5. Create Header Rows
+  # Note: Using `tibble` to avoid factor conversion
+  headerA <- dplyr::tibble("Characteristic" := "Joint Effects", Estimate = "", `95% CI` = "", `p-value` = "")
+  headerB <- dplyr::tibble("Characteristic" := "Stratum-Specific Effects", Estimate = "", `95% CI` = "", `p-value` = "")
+  headerM <- dplyr::tibble("Characteristic" := "Multiplicative Interaction", Estimate = "", `95% CI` = "", `p-value` = "")
+  headerC <- dplyr::tibble("Characteristic" := "Additive Interaction", RERI = "", `RERI 95% CI` = "", AP = "", `AP 95% CI` = "", S = "", `S 95% CI` = "")
+
+  # 6. Bind all tables together
+  # We need to bind the simple tables (A, B, M) first, then merge in C
+  simple_tables <- dplyr::bind_rows(
+    headerA, panelA_fmt,
+    headerB, panelB_fmt,
+    headerM, panelM_fmt
+  )
+
+  # Make additive table columns match for binding
+  additive_table <- dplyr::bind_rows(
+    headerC, panelC_fmt
+  )
+
+  # Use left_join to stack them, aligning on 'Characteristic'
+  # This is safer than bind_rows if columns don't perfectly match
+  final_table <- dplyr::bind_rows(simple_tables, additive_table)
+
+  # Rename estimate column
+  est_col_name_final <- ifelse(estimate_col_name == "HazardRatio", "HR", "OR/ROR")
+  if(estimate_col_name == "Coefficient") est_col_name_final <- "Estimate"
+
+  final_table <- final_table %>%
+    dplyr::rename(!!est_col_name_final := .data$Estimate)
+
+  return(final_table)
+}
+
