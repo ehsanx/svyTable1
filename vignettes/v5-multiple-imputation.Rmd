@@ -37,6 +37,7 @@ library(dplyr)
 library(survey)
 library(NHANES)
 library(knitr)
+library(mitools)
 ```
 
 We prepare an analytic dataset, define obesity, categorize age, define a binary smoking variable, and select variables needed for both imputation and the survey design.

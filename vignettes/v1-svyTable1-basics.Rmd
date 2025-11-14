@@ -3,10 +3,10 @@ bibliography: references.bib
 link-citations: true
 output: "rmarkdown::html_vignette"
 title: Creating Descriptive Table 1 Summaries with svyTable1
-vignette: |
-  \%\VignetteIndexEntry{Creating Descriptive Table 1 Summaries with svyTable1}
-  %`\VignetteEngine{knitr::rmarkdown}`{=tex}
-  %`\VignetteEncoding{UTF-8}`{=tex}
+vignette: >
+  %\VignetteIndexEntry{Creating Descriptive Table 1 Summaries with svyTable1}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
 ---
 
 `{r setup} knitr::opts_chunk$set(   collapse = TRUE,   comment = "#>" )`

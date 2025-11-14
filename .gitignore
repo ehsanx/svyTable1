@@ -1,4 +1,20 @@
+# R build artifacts
+inst/doc/
+*.Rcheck/
+*.tar.gz
+*.md
+figure/
+
+# R user files
+.Rhistory
+.RData
 .Rproj.user
-inst/doc
+.Renviron
+
+# Common OS files
+.DS_Store
+Thumbs.db
+
+# Your custom folders
 /doc/
 /Meta/

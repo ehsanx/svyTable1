@@ -1,6 +1,6 @@
 Package: svyTable1
 Title: Create Survey-Weighted Descriptive Statistics and Diagnostic Tables
-Version: 0.12.0
+Version: 0.14.0
 Authors@R: c(person("Ehsan", "Karim",
                  email = "ehsan.karim@gmail.com",
                  role = c("aut", "cre")),
