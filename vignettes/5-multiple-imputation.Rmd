@@ -1,0 +1,114 @@
+---
+title: "Formatting Multiple Imputation Results"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Formatting Multiple Imputation Results}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+bibliography: references.bib
+link-citations: yes
+---
+
+```{r setup}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+This vignette demonstrates how to use the **svypooled()** function to format pooled regression model outputs from **mice** package objects into clean, fallacy-safe tables.
+
+## Formatting Results from Multiple Imputation
+
+Beyond survey data, a common analytical challenge is presenting results from models fitted to multiply imputed datasets. The **svyTable1** package provides the `svypooled()` function to address this. It takes a pooled model object (`mipo`) from **mice** and produces publication-ready regression tables.
+
+A key feature of `svypooled()` is its ability to create a fallacy-safe table. This approach displays results for the primary exposure only while listing adjustment covariates in a footnote, preventing misinterpretation of covariate p-values.
+
+## Example: Handling Missing Data in a Survey Design
+
+The following sections illustrate the recommended workflow. Data are taken from the NHANES example dataset supplied in the `NHANES` package.
+
+### Data Preparation
+
+```{r packages, warning = FALSE, message = FALSE}
+library(svyTable1)
+library(mice)
+library(dplyr)
+library(survey)
+library(NHANES)
+library(knitr)
+```
+
+We prepare an analytic dataset, define obesity, categorize age, define a binary smoking variable, and select variables needed for both imputation and the survey design.
+
+```{r data}
+data(NHANESraw, package = "NHANES")
+nhanes_analytic <- NHANESraw %>%
+  filter(Age >= 20 & WTMEC2YR > 0) %>% 
+  mutate(
+    Obese = factor(ifelse(BMI >= 30, "Yes", "No"), levels = c("No", "Yes")),
+    AgeCat = cut(Age, breaks = c(19, 39, 59, 80), labels = c("20-39", "40-59", "60-80")),
+    Smoke100 = factor(Smoke100, levels = c("No", "Yes"))
+  ) %>%
+  select(Obese, AgeCat, Smoke100, Education, SDMVPSU, SDMVSTRA, WTMEC2YR)
+```
+
+## Pooling from Imputed Data
+
+We run `mice()`, fit a survey-weighted logistic regression model to each imputed dataset using `svyglm()`, and combine the results using `pool()`. This pooled model object is accepted directly by `svypooled()`.
+
+```{r pool}
+imputed_data <- mice(nhanes_analytic, m = 2, maxit = 2, seed = 123, printFlag = FALSE)
+
+fit_list <- list()
+for (i in 1:imputed_data$m) {
+  completed_data <- complete(imputed_data, i)
+  design_i <- svydesign(
+    id = ~SDMVPSU,
+    strata = ~SDMVSTRA,
+    weights = ~WTMEC2YR,
+    nest = TRUE,
+    data = completed_data
+  )
+  fit_list[[i]] <- svyglm(
+    Obese ~ Smoke100 + AgeCat + Education,
+    design = design_i,
+    family = quasibinomial()
+  )
+}
+
+pooled_results <- pool(fit_list)
+```
+
+## Generating Tables with `svypooled()`
+
+### Fallacy-Safe Table 
+
+This is the recommended format [@westreich2013table]. It presents results only for the main exposure and lists adjustment variables as a single footnote.
+
+```{r t2}
+svypooled(
+ pooled_model = pooled_results,
+ main_exposure = "Smoke100",
+ adj_var_names = c("AgeCat", "Education"),
+ measure = "OR",
+ title = "Adjusted Odds of Obesity (Fallacy-Safe)"
+)
+```
+
+### Full Table (Appendix-Style)
+
+This version displays results for every variable in the model. It is useful for supplemental materials or internal reporting but should not be used for primary interpretation.
+
+```{r t2pool}
+svypooled(
+ pooled_model = pooled_results,
+ main_exposure = "Smoke100",
+ adj_var_names = c("AgeCat", "Education"),
+ measure = "OR",
+ title = "Adjusted Odds of Obesity (Full Table for Appendix)",
+ fallacy_safe = FALSE
+)
+```
+
+## References

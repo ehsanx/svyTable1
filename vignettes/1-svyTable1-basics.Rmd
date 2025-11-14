@@ -1,0 +1,176 @@
+---
+bibliography: references.bib
+link-citations: true
+output: "rmarkdown::html_vignette"
+title: Creating Descriptive Table 1 Summaries with svyTable1
+vignette: |
+  \%\VignetteIndexEntry{Creating Descriptive Table 1 Summaries with svyTable1}
+  %`\VignetteEngine{knitr::rmarkdown}`{=tex}
+  %`\VignetteEncoding{UTF-8}`{=tex}
+---
+
+`{r setup} knitr::opts_chunk$set(   collapse = TRUE,   comment = "#>" )`
+
+The `svyTable1` package provides a suite of functions for creating
+publication-ready tables from complex analytical results. This vignette
+focuses on its core capability: generating descriptive "Table 1"
+summaries using the `svytable1()` function.
+
+## Describing Complex Survey Data
+
+The `svytable1()` function defaults to `mode = "mixed"`. This approach
+is considered a best practice in high-quality survey research because it
+promotes transparency.
+
+When you present a table in mixed mode, two types of information are
+shown for categorical variables:
+
+-   **Unweighted N:** The actual number of survey respondents in that
+    category. This indicates precision [@seidenberg2023preferred].
+-   **Weighted Percentage:** The proportion of the target population
+    estimated to fall in that category, accounting for survey design
+    [@national1994plan].
+
+This structure prevents common reporting problems such as showing weighted counts (which do not represent real sample sizes) or hiding sparse categories that contribute instability.
+
+For continuous variables, the function reports weighted means, standard errors, and confidence intervals. It also offers optional reliability checks derived from National Center for Health Statistics (NCHS) guidance, including standard error and relative standard error thresholds.
+
+## Example: Using NHANES Data (2009--2012)
+
+The examples below use data from the NHANES raw dataset to demonstrate how to prepare a survey design and generate descriptive tables. The code illustrates both incomplete data situations and complete case summaries.
+
+### 1. Data Preparation
+
+```{r packages, message = FALSE, warning = FALSE}
+library(svyTable1)
+library(survey)
+library(dplyr)
+library(NHANES)
+library(knitr)
+library(tidyr)
+```
+
+
+``` {r data}
+data(NHANESraw)
+
+nhanes_adults_with_na <- NHANESraw %>%
+  dplyr::filter(Age >= 20) %>%
+  mutate(
+    ObeseStatus = factor(
+      ifelse(BMI >= 30, "Obese", "Not Obese"),
+      levels = c("Not Obese", "Obese")
+    )
+  )
+
+adult_design_with_na <- svydesign(
+  id = ~SDMVPSU,
+  strata = ~SDMVSTRA,
+  weights = ~WTMEC2YR,
+  nest = TRUE,
+  data = nhanes_adults_with_na
+)
+```
+
+### 2. Generating Tables
+
+#### Example A: Handling Variables with Missing Data
+
+Variables in large health surveys often contain missing values. `svytable1()` automatically identifies missingness and calculates unweighted Ns that reflect real denominators. Weighted percentages are based only on cases with observed data, consistent with standard survey practice.
+
+``` {r miss}
+vars_with_missing <- c(
+  "Age", "Gender", "Race1", "Education", "HHIncome",
+  "TotChol", "SleepHrsNight", "SmokeNow"
+)
+
+table_with_missing <- svytable1(
+  design = adult_design_with_na,
+  strata_var = "ObeseStatus",
+  table_vars = vars_with_missing
+)
+
+knitr::kable(
+  table_with_missing,
+  caption = "Table 1: Summarizing Variables with Missing Data"
+)
+```
+
+#### Example B: Summarizing Complete Data
+
+If you prefer to restrict the analysis to respondents with complete data for a chosen set of variables, you can construct a complete analytic dataset and supply it to a new `svydesign` object. The function then calculates summary statistics without any missing categories.
+
+``` {r complete}
+vars_for_complete_table <- c(
+  "Age", "Gender", "Race1", "BPSysAve", "Pulse", "BMI"
+)
+
+nhanes_adults_complete <- nhanes_adults_with_na %>%
+  drop_na(all_of(vars_for_complete_table))
+
+adult_design_complete <- svydesign(
+  id = ~SDMVPSU,
+  strata = ~SDMVSTRA,
+  weights = ~WTMEC2YR,
+  nest = TRUE,
+  data = nhanes_adults_complete
+)
+
+table_without_missing <- svytable1(
+  design = adult_design_complete,
+  strata_var = "ObeseStatus",
+  table_vars = c("Age", "Gender", "Race1", "BPSysAve", "Pulse")
+)
+
+knitr::kable(
+  table_without_missing,
+  caption = "Table 2: Summarizing Variables with No Missing Data"
+)
+```
+
+### 3. Checking Estimate Reliability for Proportions (NCHS Standards)
+
+Federal statistical agencies discourage reporting proportions that are unstable or based on very small samples. When you request `reliability_checks = TRUE`, `svytable1()` returns:
+
+- The formatted table with suppressed estimates.
+
+- A companion metrics table showing which estimates failed reliability standards.
+
+These checks follow NCHS guidance for the evaluation of proportions in complex surveys. Estimates with relative standard error values above recommended thresholds are marked or suppressed.
+
+``` {r rel}
+results_list <- svytable1(
+  design = adult_design_with_na,
+  strata_var = "ObeseStatus",
+  table_vars = vars_with_missing,
+  reliability_checks = TRUE,
+  return_metrics = TRUE
+)
+
+knitr::kable(
+  results_list$formatted_table,
+  caption = "Table 3: Table with NCHS Reliability Checks Applied"
+)
+
+knitr::kable(
+  results_list$reliability_metrics[
+    results_list$reliability_metrics$suppressed == TRUE, ],
+  caption = "Reliability Metrics for Suppressed Estimates"
+)
+```
+
+### 4. Checking Estimate Reliability for Means (NCHS Standards)
+
+For numeric variables, `svytable1()` performs an additional check:
+
+-   `fail_rse_30`: Flags means whose relative standard error (RSE) is at
+    least 30 percent.
+
+RSE is calculated as:
+
+    RSE = (Standard Error / Estimate) * 100
+
+An RSE ≥ 30 percent indicates an unreliable estimate based on NCHS
+guidance.
+
+## References

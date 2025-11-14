@@ -1,0 +1,339 @@
+---
+title: "Survival Analysis with svyTable1"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Survival Analysis with svyTable1}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+bibliography: references.bib
+link-citations: yes
+---
+
+```{r setup}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+This vignette introduces survival analysis tools in the svyTable1 package for complex survey data. The functions support Kaplan–Meier estimation, proportional hazards diagnostics, and multiple imputation pipelines.
+
+The vignette covers three tasks:
+
+- Visualizing survival curves with `svykmplot()`
+- Testing the proportional hazards assumption with an ad-hoc procedure `svycoxph_CE()`
+- Extending proportional hazards diagnostics to multiply imputed data with `svycoxph_CE_mi()`
+
+# 1. Visualizing Survey-Weighted Survival Data (`svykmplot`)
+
+```{r packages, warning = FALSE, message = FALSE}
+library(svyTable1)
+library(survey)
+library(knitr)
+library(survival)
+library(ggplot2)
+library(dplyr)
+library(mitools)
+library(mice)
+```
+
+`svykmplot()` produces Kaplan–Meier survival estimates that correctly incorporate survey weights, strata, and clusters. The function returns both a plot and a number-at-risk table. The plot supports automatic or custom colors, p-value display, and censoring indicators.
+
+The example below uses the NHANES linked mortality file to compare survival across levels of caffeine consumption among women.
+
+The number-at-risk table is printed beneath the plot, which is required by common reporting guidelines.
+
+```{r data}
+data(nhanes_mortality)
+
+analytic_design <- svydesign(
+  strata = ~strata,
+  id = ~psu,
+  weights = ~survey_weight,
+  data = nhanes_mortality,
+  nest = TRUE
+)
+
+design_female <- subset(analytic_design, sex == "Female")
+
+km_formula <- Surv(stime, status) ~ caff
+
+distinct_palette <- c("#377EB8", "#FF7F00", "#4DAF4A", "#E41A1C")
+
+km_results_female <- svykmplot(
+  formula = km_formula,
+  design = design_female,
+  legend_title = "Caffeine Consumption",
+  time_unit = "days",
+  time_breaks = seq(0, 240, by = 60),
+  palette = distinct_palette,
+  show_pval = TRUE,
+  show_censor_marks = TRUE
+)
+```
+
+
+```{r plot, fig.width=12, fig.height=6, out.width="100%", fig.align="center"}
+km_results_female$plot
+```
+
+```{r, eval=FALSE}
+knitr::kable(
+  km_results_female$table,
+  caption = "Number at Risk for Female Mortality Plot"
+)
+```
+
+# 2. Ad hoc solutions for testing Proportional Hazards 
+
+The R functions, **svycoxph_CE** (for single survey designs) and
+**svycoxph_CE_mi** (for multiply imputed survey designs), are ad hoc
+solutions for testing the Proportional Hazards (PH) assumption in a
+complex survey data analysis environment.
+
+## What the Functions Do {-}
+
+Both functions implement the same core strategy for assessing the PH
+assumption, which is violated if the effect of a covariate changes over
+time (i.e., $\beta(t) \neq \beta$). They transform the proportional
+hazards model (second equation below) into a time-dependent coefficient model
+using a step-function approach.
+
+The fundamental Cox models are: 
+
+-   **Proportional Hazards (PH):**\
+    $$\lambda(t) = \lambda_{0}(t) e^{\beta X}$$
+
+-   **Time-Dependent Coefficient:**\
+    $$\lambda(t) = \lambda_{0}(t) e^{\beta(t)X}$$
+
+The step-function approach works by:
+
+1.  **Defining Time Intervals:**\
+    The total follow-up time is split into $n$ distinct intervals (for
+    example, 5 quantiles of event times).
+
+2.  **Splitting the Data:**\
+    The input dataset is expanded into a start-stop format using
+    `survival::survSplit()`. A single subject's follow-up is broken into
+    multiple rows, one for each time interval they contribute to.
+
+3.  **Fitting Interval-Specific Models:**\
+    A separate Cox model is fitted for each time interval. This is
+    achieved by including a term such as\
+    `var_to_test:strata(tgroup)`\
+    or by subsetting the data by the interval variable (`tgroup`) and
+    using\
+    `Surv(tstart, time, status) ~ ...` in the model formula.
+
+4.  **Multiple Imputation Support:**\
+    For `svycoxph_CE_mi`, each interval model is pooled across the
+    multiple imputations using `mitools::pool()`.
+
+5.  **Extracting and Plotting Coefficients:**\
+    The functions extract the coefficient ($\hat{\beta}$) and its
+    standard error for the variable being tested across intervals, then
+    plot them against time.
+
+**Interpretation**
+
+If the true effect is constant (PH holds), the plotted coefficients
+should cluster around the overall constant-effect estimate, with
+confidence intervals overlapping the overall mean or null-effect line.\
+A clear time trend in the step-function coefficients suggests a PH
+violation.
+
+## Why These are Ad Hoc Solutions, and Why the Specialized Functions are Necessary  {-}
+
+The `svycoxph_CE` and `svycoxph_CE.mi` functions are "ad hoc" solutions; and they are purpose-built to solve a gap in R's survival analysis ecosystem. Standard methods for testing the proportional hazards assumption fail when faced with the combined complexity of **survey design, multiple imputation, and time-varying coefficients**.
+
+This function is the correct solution because it successfully navigates three distinct incompatibilities in standard packages:
+
+1. Incompatibility of `cox.zph()` and `svycoxph`
+
+The standard function `cox.zph()` (based on Schoenfeld residuals) cannot be used on `svycoxph` objects. Using it on a non-survey `coxph` model, even with a `weights()` term, ignores the clusters and strata, leading to incorrect standard errors and invalid p-values.
+
+* **Potential Solution:** The `svycoxph_CE` functions use `svycoxph` for every calculation, ensuring that the survey design's variance estimation is correctly applied at all steps.
+
+2. Incompatibility of `tt()` and `svycoxph`
+
+The "correct" way to model a *continuously* time-varying coefficient (e.g., $\beta(t) = a + b \log(t)$) in a `coxph` model is to use the `tt()` (time-transform) argument.
+
+* **The Problem:** The `tt()` argument is **not implemented** in the `survey::svycoxph` function. A researcher using survey data is therefore technically blocked from using this method.
+* **Potential Solution:** The step-function approach is the most robust, non-parametric alternative. By fitting separate models in discrete time intervals, it makes no assumptions about the *shape* of the effect over time and is fully compatible with `svycoxph`.
+
+3. Incompatibility of `cox.zph()` and Multiple Imputation
+
+Standard diagnostics like `cox.zph()` are not designed to be "pooled" across multiply-imputed datasets. A researcher might incorrectly run the test on just one imputed dataset or, worse, on the stacked (long-format) data, both of which are invalid.
+
+* **Potential Solution:** The `svycoxph_CE.mi` function correctly handles multiple imputation by fitting the step-function model separately to each imputed dataset and then pooling the results using Rubin's Rules (`mitools::pool()`). This produces a single, valid estimate and confidence interval for the coefficient in each time interval.
+
+4. Avoiding the "Obvious but Incorrect" `log(t)` Trap
+
+It is a common mistake [@therneau2017using] to test the PH assumption by adding a simple interaction like `covariate:log(time)` to the formula.
+
+* **The Problem:** This is statistically invalid, as it introduces circular logic. It uses the subject's *final* follow-up time (part of the outcome) as a predictor for the hazard at all earlier time points .
+* **Potential Solution:** The `survSplit` method avoids this by partitioning the data into `(start, stop]` intervals. The model at any given interval `t` only uses data from subjects still at risk, correctly adhering to the principles of survival analysis.
+
+## Complete case (`svycoxph_CE`)
+
+```{r cc}
+data(nhanes_mortality)
+
+analytic_design <- svydesign(
+  strata = ~strata,
+  id = ~psu,
+  weights = ~survey_weight,
+  data = nhanes_mortality,
+  nest = TRUE
+)
+
+data_full_clean <- analytic_design$variables %>%
+  dplyr::filter(stime > 0) %>%
+  mutate(
+    caff_bin = factor(
+      ifelse(caff == "No consumption", "No", "Yes"),
+      levels = c("No", "Yes")
+    )
+  )
+
+analytic_design_final <- svydesign(
+  strata = ~strata,
+  id = ~psu,
+  weights = ~survey_weight,
+  data = data_full_clean,
+  nest = TRUE
+)
+
+my_formula <- "caff_bin + age"
+my_var <- "age"
+
+svycoxph_CE(
+  formula_rhs = my_formula,
+  design = analytic_design_final,
+  var_to_test = my_var,
+  time_var = "stime",
+  status_var = "status",
+  n_intervals = 5,
+  verbose = TRUE,
+  print_main_model = TRUE,
+  print_split_summary = TRUE
+)
+```
+
+- Multiple Imputation Case (`svycoxph_CE_mi`)
+
+```{r mi}
+data(nhanes_mortality)
+
+analytic_design <- svydesign(
+  strata = ~strata,
+  id = ~psu,
+  weights = ~survey_weight,
+  data = nhanes_mortality,
+  nest = TRUE
+)
+
+set.seed(123)
+data_with_miss <- analytic_design$variables %>%
+  dplyr::filter(stime > 0) %>%
+  mutate(
+    caff_bin = factor(
+      ifelse(caff == "No consumption", "No", "Yes"),
+      levels = c("No", "Yes")
+    ),
+    age = ifelse(runif(n()) < 0.10, NA, age),
+    bmi_cat = factor(ifelse(age > 50 & runif(n()) < 0.15, NA, as.character(bmi.cat)))
+  )
+
+print(mice::md.pattern(data_with_miss[, c("age", "bmi_cat", "caff_bin", "stime", "status")], plot = FALSE))
+
+data_with_miss$nelson_aalen <- nelsonaalen(
+  data_with_miss,
+  time = stime,
+  status = status
+)
+
+M_IMPUTATIONS <- 2
+MAX_ITERATIONS <- 2
+
+pred_matrix <- make.predictorMatrix(data_with_miss)
+vars_to_keep_as_is <- c("id", "survey.weight", "psu", "strata",
+                        "stime", "status", "nelson_aalen", "caff_bin", "sex")
+
+pred_matrix[, vars_to_keep_as_is] <- 0
+pred_matrix[vars_to_keep_as_is, ] <- 0
+
+imputed_data <- mice(
+  data_with_miss,
+  m = M_IMPUTATIONS,
+  maxit = MAX_ITERATIONS,
+  predictorMatrix = pred_matrix,
+  method = "pmm",
+  seed = 123,
+  printFlag = FALSE
+)
+
+impdata_long <- mice::complete(imputed_data, "long", include = FALSE)
+
+allImputations_main <- imputationList(split(impdata_long, impdata_long$.imp))
+design_main <- svydesign(
+  strata = ~strata,
+  id = ~psu,
+  weights = ~survey_weight,
+  data = allImputations_main,
+  nest = TRUE
+)
+
+my_formula <- "caff_bin + sex + age + bmi_cat"
+main_formula <- as.formula(paste0("Surv(stime, status) ~ ", my_formula))
+
+main_fit_list <- with(design_main, svycoxph(main_formula))
+main_fit_pooled <- pool(main_fit_list)
+
+event_times <- data_with_miss$stime[data_with_miss$status == 1]
+cuts <- quantile(event_times, probs = c(0.2, 0.4, 0.6, 0.8), na.rm = TRUE)
+
+impdata_long_split <- survSplit(Surv(stime, status) ~ .,
+                                data = impdata_long,
+                                cut = cuts,
+                                episode = "tgroup",
+                                id = "split_id")
+
+allImputations_split <- imputationList(split(impdata_long_split, impdata_long_split$.imp))
+
+design_split <- svydesign(
+  strata = ~strata,
+  id = ~psu,
+  weights = ~survey_weight,
+  data = allImputations_split,
+  nest = TRUE
+)
+
+my_ph_plot <- svycoxph_CE_mi(
+  formula_rhs = my_formula,
+  design_split = design_split,
+  var_to_test = "caff_binYes",
+  tgroup_var = "tgroup",
+  time_var = "stime",
+  status_var = "status",
+  main_model_fit = main_fit_pooled,
+  print_split_summary = TRUE,
+  show_null_effect = TRUE
+)
+
+print(my_ph_plot)
+```
+
+## How to Interpret the Results {-}
+
+The output has three key parts: the "Main Model" table, the "Time-Interval" table, and the plot.
+
+1. Main (Constant Effect) Model: This is the standard, un-split model. It assumes the effect of asthma is constant over time.
+
+
+2. Time-Interval Model & Plot: This is the diagnostic test. We check this plot to see if the assumption of the first model was valid.
+
+3. The plot shows the pooled log-Hazard Ratio (coefficient) for variable of intest across the 5 time intervals. While they are not perfectly flat, the vertical 95% confidence intervals substantially overlap with each other. You could conclude that the constant effect (parallel to proportional hazards) assumption is reasonable. Hence, instead of the time-split model (in the 2nd output), just report the Main (Constant Effect) Model (in the first output).
+
+# References

@@ -746,4 +746,283 @@ knitr::kable(
 ```
 
 
+## 7. Visualizing Interaction Effects with `plotint`
+
+While the functions `addintlist()` and `reportint()` are powerful for generating tables of additive and multiplicative interaction for categorical variables, a common challenge is visualizing interactions involving continuous variables.
+
+The `plotint()` function is a general-purpose tool designed to solve this. It uses the "simple slopes" (or "pick-a-point") methodology [@aiken1991multiple; @preacher2006computational] to probe and plot interactions from `svyglm`, `glm`, `svycoxph`, and `coxph` models.
+
+It can handle three main scenarios:
+
+- **Continuous × Continuous:** (e.g., Age × BMI)  
+- **Continuous × Categorical:** (e.g., Age × Sex)  
+- **Categorical × Categorical:** (e.g., Obesity × Race)
+
+The function generates a `ggplot2` object, allowing you to visualize how the effect of a primary exposure (*effect*) changes across different levels of a moderator (*moderator*).
+
+---
+
+### Example: Continuous × Continuous Interaction (NHANESraw)
+
+Let's examine if the effect of Age on blood pressure is modified by BMI. Both are continuous variables.
+
+#### 1. Data Preparation and Model Fitting
+
+We first load the NHANESraw data, filter for a complete-case dataset, and fit the model. We use `family = gaussian(link = "log")` to model the Geometric Mean of BPSysAve.
+
+```{r plotint-data}
+library(NHANES)
+library(dplyr)
+library(survey)
+library(emmeans)
+library(ggplot2)
+
+# Load and prepare data
+data("NHANESraw")
+nhanes_clean <- NHANESraw %>%
+  filter(Age >= 20) %>%
+  mutate(
+    Gender = factor(Gender),
+    Race1 = factor(Race1)
+  ) %>%
+  select(
+    BPSysAve, Age, BMI, Gender, Race1,
+    SDMVPSU, SDMVSTRA, WTMEC2YR
+  ) %>%
+  na.omit()
+
+# Create the survey design
+design_nhanes <- svydesign(
+  id = ~SDMVPSU,
+  strata = ~SDMVSTRA,
+  weights = ~WTMEC2YR,
+  nest = TRUE,
+  data = nhanes_clean
+)
+
+# Fit the interaction model
+model_bp_interaction <- svyglm(
+  BPSysAve ~ Age * BMI + Gender + Race1,
+  design = design_nhanes,
+  family = gaussian(link = "log")
+)
+```
+
+#### 2. Plotting the Interaction
+
+We now pass the fitted model to `plotint()`.
+
+- `effect = "Age"`: continuous x-axis  
+- `moderator = "BMI"`: continuous moderator  
+- `mod_scale = "quantile"`: uses 10th, 50th, and 90th percentiles of BMI  
+- `type = "response"`: plots the Geometric Mean SBP (back-transformed)  
+- `pval_position = "bottom.right"`: displays the interaction p-value on the plot  
+
+```{r plotint}
+# Plot the interaction
+plot_data_list <- plotint(
+  model = model_bp_interaction,
+  effect = "Age",
+  moderator = "BMI",
+  data = nhanes_clean,
+  mod_scale = "quantile",       # Use 10th/50th/90th percentiles for BMI
+  type = "response",            # Plot the Geometric Mean SBP
+  show_ci = TRUE,
+  bw = FALSE,
+  pval_position = "bottom.right",
+  xlab = "Age (Years)",
+  ylab = "Predicted Geometric Mean SBP (mmHg)",
+  legend_title = "BMI (Percentiles)"
+)
+
+names(plot_data_list)
+# The function also invisibly returns the plot's data
+head(plot_data_list$plot_data)
+```
+
+The resulting plot shows the predicted geometric mean SBP on the y-axis and age on the x-axis. Each of the three lines represents a different level of BMI (10th, 50th, and 90th percentiles). The diverging lines and the significant p-value (P < 0.001) clearly indicate a statistical interaction: the effect of aging on blood pressure is more pronounced at higher levels of BMI.
+
+## 8. Checking Proportional Hazards (Constant Effect) in Survival Models
+
+A critical assumption in Cox survival models is that the effect of a predictor is constant over time (the Proportional Hazards or "PH" assumption). For complex survey data, the standard `survival::cox.zph()` function is not valid.
+
+The `svyTable1` package provides two functions to correctly test this assumption by splitting the follow-up time into intervals, fitting a separate model to each interval, and plotting the coefficient to see if it remains constant.
+
+- `svycoxph_CE()`: For standard `svydesign` objects.
+- `svycoxph_CE_mi()`: For `svyimputationList` (multiple imputation) objects.
+
+### Example 8A: The Standard Case (`svycoxph_CE`)
+
+```{r ce}
+# 1. Load data from svyTable1 and create base design
+require(svyTable1)
+library(dplyr)
+data(nhanes_mortality)
+analytic_design <- svydesign(
+  strata = ~strata,
+  id = ~psu,
+  weights = ~survey_weight,
+  data = nhanes_mortality,
+  nest = TRUE
+)
+
+# 2. Create the analysis data.frame with all variables
+data_full_clean <- analytic_design$variables %>%
+  dplyr::filter(stime > 0) %>%
+  mutate(
+    caff_bin = factor(
+      ifelse(caff == "No consumption", "No", "Yes"),
+      levels = c("No", "Yes")
+    )
+  )
+
+# 3. Create the final analytic design object
+analytic_design_final <- svydesign(
+  strata = ~strata,
+  id = ~psu,
+  weights = ~survey_weight,
+  data = data_full_clean,
+  nest = TRUE
+)
+
+# 4. Define the model and variable to test
+my_formula <- "caff_bin + age"
+my_var <- "age"
+
+# 5. Run the function
+svycoxph_CE(
+  formula_rhs = my_formula,
+  design = analytic_design_final,
+  var_to_test = my_var,
+  time_var = "stime",
+  status_var = "status",
+  n_intervals = 5,
+  verbose = TRUE,
+  print_main_model = TRUE,
+  print_split_summary = TRUE
+)
+```
+
+### Example 8B: The Multiple Imputation Case (`svycoxph_CE_mi`)
+
+```{r ceme}
+library(svyTable1)
+library(dplyr)
+library(survival)
+library(survey)
+library(mitools)
+library(mice)
+library(ggplot2)
+library(knitr)
+
+# 2. Load data and create base design
+data(nhanes_mortality)
+analytic_design <- svydesign(
+  strata = ~strata,
+  id = ~psu,
+  weights = ~survey_weight,
+  data = nhanes_mortality,
+  nest = TRUE
+)
+
+# 3. Create analysis dataframe and induce missingness
+set.seed(123)
+data_with_miss <- analytic_design$variables %>%
+  dplyr::filter(stime > 0) %>%
+  mutate(
+    caff_bin = factor(
+      ifelse(caff == "No consumption", "No", "Yes"),
+      levels = c("No", "Yes")
+    ),
+    age = ifelse(runif(n()) < 0.10, NA, age),
+    bmi_cat = factor(ifelse(age > 50 & runif(n()) < 0.15, NA, as.character(bmi.cat)))
+  )
+
+print("--- Missingness Induced in Covariates ---")
+print(mice::md.pattern(data_with_miss[, c("age", "bmi_cat", "caff_bin", "stime", "status")], plot = FALSE))
+
+# 4. Add Nelson-Aalen hazard
+data_with_miss$nelson_aalen <- nelsonaalen(
+  data_with_miss,
+  time = stime,
+  status = status
+)
+
+# 5. Run MICE
+M_IMPUTATIONS <- 2
+MAX_ITERATIONS <- 2
+
+pred_matrix <- make.predictorMatrix(data_with_miss)
+vars_to_keep_as_is <- c("id", "survey.weight", "psu", "strata",
+                        "stime", "status", "nelson_aalen", "caff_bin", "sex")
+
+pred_matrix[, vars_to_keep_as_is] <- 0
+pred_matrix[vars_to_keep_as_is, ] <- 0
+
+imputed_data <- mice(
+  data_with_miss,
+  m = M_IMPUTATIONS,
+  maxit = MAX_ITERATIONS,
+  predictorMatrix = pred_matrix,
+  method = "pmm",
+  seed = 123,
+  printFlag = FALSE
+)
+
+# 6. Create stacked long-format data
+impdata_long <- mice::complete(imputed_data, "long", include = FALSE)
+
+# 7. Fit main pooled model
+allImputations_main <- imputationList(split(impdata_long, impdata_long$.imp))
+design_main <- svydesign(
+  strata = ~strata,
+  id = ~psu,
+  weights = ~survey_weight,
+  data = allImputations_main,
+  nest = TRUE
+)
+
+my_formula <- "caff_bin + sex + age + bmi_cat"
+main_formula <- as.formula(paste0("Surv(stime, status) ~ ", my_formula))
+
+main_fit_list <- with(design_main, svycoxph(main_formula))
+main_fit_pooled <- pool(main_fit_list)
+
+# 8. Create split-time design
+event_times <- data_with_miss$stime[data_with_miss$status == 1]
+cuts <- quantile(event_times, probs = c(0.2, 0.4, 0.6, 0.8), na.rm = TRUE)
+
+impdata_long_split <- survSplit(Surv(stime, status) ~ .,
+                                data = impdata_long,
+                                cut = cuts,
+                                episode = "tgroup",
+                                id = "split_id")
+
+allImputations_split <- imputationList(split(impdata_long_split, impdata_long_split$.imp))
+
+design_split <- svydesign(
+  strata = ~strata,
+  id = ~psu,
+  weights = ~survey_weight,
+  data = allImputations_split,
+  nest = TRUE
+)
+
+# 9. Run PH test function and print plot
+my_ph_plot <- svycoxph_CE_mi(
+  formula_rhs = my_formula,
+  design_split = design_split,
+  var_to_test = "caff_binYes",
+  tgroup_var = "tgroup",
+  time_var = "stime",
+  status_var = "status",
+  main_model_fit = main_fit_pooled,
+  print_split_summary = TRUE,
+  show_null_effect = TRUE
+)
+
+print(my_ph_plot)
+```
+
+
 ## References
