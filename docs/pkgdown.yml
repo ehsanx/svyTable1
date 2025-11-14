@@ -1,0 +1,13 @@
+pandoc: '3.2'
+pkgdown: 2.1.3
+pkgdown_sha: ~
+articles:
+  v1-svyTable1-basics: v1-svyTable1-basics.html
+  v2-model-diagnostics: v2-model-diagnostics.html
+  v3-interaction-analysis: v3-interaction-analysis.html
+  v4-survival-analysis: v4-survival-analysis.html
+  v5-multiple-imputation: v5-multiple-imputation.html
+last_built: 2025-11-14T06:52Z
+urls:
+  reference: https://ehsanx.github.io/svyTable1/reference
+  article: https://ehsanx.github.io/svyTable1/articles
