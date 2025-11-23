@@ -2,7 +2,7 @@
 % Please edit documentation in R/svycoxph_CE.R
 \name{svycoxph_CE}
 \alias{svycoxph_CE}
-\title{Plot Time-Varying Coefficients for a svycoxph Model}
+\title{Test Constant Effect (PH) Assumption for Survey Cox Models}
 \usage{
 svycoxph_CE(
   formula_rhs,
@@ -11,6 +11,9 @@ svycoxph_CE(
   time_var = "stime",
   status_var = "status",
   n_intervals = 5,
+  design_ids = NULL,
+  design_weights = NULL,
+  design_strata = NULL,
   verbose = FALSE,
   print_main_model = TRUE,
   print_split_summary = TRUE,
@@ -19,58 +22,86 @@ svycoxph_CE(
   xlab = NULL,
   ylab = NULL,
   use_classic_theme = TRUE,
-  show_null_effect = FALSE
+  show_null_effect = TRUE
 )
 }
 \arguments{
-\item{formula_rhs}{A string for the right-hand side of your Cox model.}
+\item{formula_rhs}{A string specifying the right-hand side of the Cox model formula
+(e.g., "treatment + age + sex").}
 
-\item{design}{The original, un-split svydesign object.}
+\item{design}{The original, un-split \code{svydesign} object.}
 
-\item{var_to_test}{A string specifying the exact coefficient name to plot.}
+\item{var_to_test}{A string specifying the exact coefficient name to plot
+(e.g., "age" or "treatmentYes").}
 
-\item{time_var}{A string for the follow-up time variable.}
+\item{time_var}{A string for the time-to-event variable name (default "stime").}
 
-\item{status_var}{A string for the event status variable (must be 0/1).}
+\item{status_var}{A string for the event status variable name (default "status", usually 0/1).}
 
-\item{n_intervals}{The number of time intervals to create (default is 5).}
+\item{n_intervals}{Integer. The number of time intervals to create based on event
+time quantiles (default is 5).}
 
-\item{verbose}{A logical. If TRUE, prints extra debugging information.}
+\item{design_ids}{(Optional) A formula specifying the cluster IDs (e.g., \code{~psu})
+to be used if automatic extraction fails.}
 
-\item{print_main_model}{A logical. If TRUE, prints a tidy summary of the
-main (un-split) proportional hazards model.}
+\item{design_weights}{(Optional) A formula specifying the survey weights (e.g., \code{~weight})
+to be used if automatic extraction fails.}
 
-\item{print_split_summary}{A logical. If TRUE, prints a tidy summary table
-of all coefficients from all interval models.}
+\item{design_strata}{(Optional) A formula specifying the strata (e.g., \code{~strata})
+to be used if automatic extraction fails.}
 
-\item{add_smoother}{A logical. If TRUE, adds a loess smooth line to the plot.}
+\item{verbose}{Logical. If TRUE, prints debugging information about cut-points and convergence.}
 
-\item{title}{A string. Custom title for the plot.}
+\item{print_main_model}{Logical. If TRUE, prints a tidy summary of the main
+(un-split) model.}
 
-\item{xlab}{A string. Custom x-axis label.}
+\item{print_split_summary}{Logical. If TRUE, prints a tidy summary table of
+coefficients for every time interval.}
 
-\item{ylab}{A string. Custom y-axis label.}
+\item{add_smoother}{Logical. If TRUE, adds a loess smooth line to the plot.}
 
-\item{use_classic_theme}{A logical. If TRUE, uses theme_classic() (white bg,
-no grid). If FALSE, uses theme_minimal().}
+\item{title}{String. Custom title for the plot.}
 
-\item{show_null_effect}{A logical. If TRUE (default), draws the red dashed
-line at y=0.}
+\item{xlab}{String. Custom x-axis label.}
+
+\item{ylab}{String. Custom y-axis label.}
+
+\item{use_classic_theme}{Logical. If TRUE, uses \code{theme_classic()}.}
+
+\item{show_null_effect}{Logical. If TRUE, draws a dashed red line at y=0.}
 }
 \value{
-A ggplot object.
+A \code{ggplot} object showing the coefficient trend over time.
 }
 \description{
-This function provides a valid alternative to cox.zph() for complex survey
-designs by fitting separate models to different time intervals and
-plotting the resulting coefficients to check the Constant Effect
-(Proportional Hazards) assumption.
+This function provides a valid alternative to \code{cox.zph()} for complex survey
+designs. It checks the Constant Effect (Proportional Hazards) assumption by
+splitting the follow-up time into intervals (based on event quantiles), fitting
+separate models for each interval, and plotting the estimated coefficients over time.
+}
+\details{
+\strong{Methodology:}
+The function uses "Event-Based Splitting." Instead of splitting time into equal
+chunks (e.g., every 5 years), it splits time based on quantiles of the event
+times (e.g., 20th, 40th percentiles). This ensures that each interval contains
+roughly the same number of events, maintaining statistical power across all
+segments.
+
+\strong{Fix for Pipe/Subset Errors:}
+Survey design objects created via \code{magrittr} pipes or \code{subset()} often
+cannot be easily reconstructed. This function attempts to automatically extract
+the necessary design components (ids, weights, strata) and attach them to the data
+before splitting. If this fails, the user can manually provide the
+\code{design_ids}, \code{design_weights}, and \code{design_strata} arguments.
 }
 \examples{
 \dontrun{
-# --- 1. Load data from svyTable1 and create base design ---
-require(svyTable1)
-data(nhanes_mortality)
+# --- 1. Load data and create a design ---
+library(survey)
+library(dplyr)
+data(nhanes_mortality, package = "svyTable1")
+
+# Create a base design
 analytic_design <- svydesign(
   strata = ~strata,
   id = ~psu,
@@ -79,42 +110,37 @@ analytic_design <- svydesign(
   nest = TRUE
 )
 
-# --- 2. Create the analysis data.frame with all variables ---
-# We filter and create 'caff_bin' in this data.frame
-data_full_clean <- analytic_design$variables \%>\%
+# Prepare data (filter to >0 time)
+data_clean <- analytic_design$variables \%>\%
   dplyr::filter(stime > 0) \%>\%
-  mutate(
-    caff_bin = factor(
-      ifelse(caff == "No consumption", "No", "Yes"),
-      levels = c("No", "Yes")
-    )
-  )
+  mutate(caff_bin = ifelse(caff == "No consumption", "No", "Yes"))
 
-# --- 3. Create the FINAL analytic design object ---
-# This new design object *contains* caff_bin, sex, and age
-analytic_design_final <- svydesign(
+# Create final design object
+final_design <- svydesign(
   strata = ~strata,
   id = ~psu,
   weights = ~survey_weight,
-  data = data_full_clean,
+  data = data_clean,
   nest = TRUE
 )
 
-# --- 4. Define the model and variable to test ---
-my_formula <- "caff_bin + age"
-my_var <- "age"
-
-# --- 5. Run the function ---
+# --- Example 1: Standard Usage ---
 svycoxph_CE(
-  formula_rhs = my_formula,
-  design = analytic_design_final,
-  var_to_test = my_var,
+  formula_rhs = "caff_bin + age",
+  design = final_design,
+  var_to_test = "age",
   time_var = "stime",
-  status_var = "status",
-  n_intervals = 5,
-  verbose = TRUE,
-  print_main_model = TRUE,
-  print_split_summary = TRUE
+  status_var = "status"
+)
+
+# --- Example 2: Manual Safety Valve (if automatic extraction fails) ---
+svycoxph_CE(
+  formula_rhs = "caff_bin + age",
+  design = final_design,
+  var_to_test = "caff_binYes", # Note: Check exact coef name
+  design_ids = ~psu,
+  design_weights = ~survey_weight,
+  design_strata = ~strata
 )
 }
 }

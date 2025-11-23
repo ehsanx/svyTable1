@@ -1,12 +1,15 @@
 Package: svyTable1
 Title: Create Survey-Weighted Descriptive Statistics and Diagnostic Tables
-Version: 0.14.0
+Version: 0.14.1
 Authors@R: c(person("Ehsan", "Karim",
                  email = "ehsan.karim@gmail.com",
                  role = c("aut", "cre")),
              person("Esteban", "Valencia",
                  comment = "Provided feedback on generalizing the svydiag function, tested installation issues and fixed a bug regarding effective sample size calculation.",
-                 role = "ctb"))
+                 role = "ctb"),
+             person("Kevin", "Hu",
+                 role = "ctb",
+                 comment = "Reported a scoping bug in the svycoxph_CE function regarding survey design objects created via pipes."))
 Description: A tool to create publication-ready tables from complex 
     survey data, including descriptive summaries and multi-panel 
     interaction reports. It also provides a suite of functions to 
