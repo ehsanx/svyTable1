@@ -17,6 +17,10 @@
 #'   use for the strata.
 #' @param show_pval Logical. If `TRUE`, calculates and displays the
 #'   survey-weighted log-rank test p-value.
+#' @param se Logical. If `TRUE` (default), computes survey-weighted confidence
+#'   bands via `survey::svykm(se = TRUE)` and draws them as shaded ribbons. The
+#'   standard-error calculation can be slow on large designs; set `se = FALSE`
+#'   to draw the survival curves only (much faster, no confidence bands).
 #' @param show_censor_marks Logical. If `TRUE`, displays censor markings (`+`)
 #'   on the survival curves.
 #' @param base_font_size Base font size for the plot theme.
@@ -48,54 +52,31 @@
 #' @importFrom tools toTitleCase
 #'
 #' @examples
-#' \dontrun{
-#' # This example uses the 'nhanes_mortality' dataset,
+#' \donttest{
+#' library(survival)   # for Surv() in the formula below
+#' data(nhanes_mortality, package = "svyTable1")
 #'
-#' if (requireNamespace("survey", quietly = TRUE)) {
+#' design <- survey::svydesign(
+#'   id = ~psu, strata = ~strata, weights = ~survey_weight,
+#'   nest = TRUE, data = nhanes_mortality
+#' )
 #'
-#'   # 1. Load the data
-#'   data(nhanes_mortality)
+#' # Survey-weighted Kaplan-Meier curves by caffeine consumption (women only).
+#' design_female <- subset(design, sex == "Female")
 #'
-#'   # 2. Create the main survey design object
-#'   analytic_design <- survey::svydesign(
-#'     strata = ~strata,
-#'     id = ~psu,
-#'     weights = ~survey_weight,
-#'     data = nhanes_mortality,
-#'     nest = TRUE
-#'   )
+#' # se = FALSE draws curves only (fast); use se = TRUE to add confidence bands.
+#' km <- svykmplot(
+#'   formula = Surv(stime, status) ~ caff,
+#'   design = design_female,
+#'   legend_title = "Caffeine consumption",
+#'   time_unit = "days",
+#'   time_breaks = seq(0, 240, by = 60),
+#'   show_pval = TRUE,
+#'   se = FALSE
+#' )
 #'
-#'   # 3. Create a subsetted design for females
-#'   design_female <- subset(analytic_design, sex == "Female")
-#'
-#'   # 4. Define the formula
-#'   km_formula <- Surv(stime, status) ~ caff
-#'
-#'   # 5. Define a 4-color palette
-#'   distinct_palette <- c("#377EB8", "#FF7F00", "#4DAF4A", "#E41A1C")
-#'
-#'   # 6. Run the function
-#'   km_results_female <- svykmplot(
-#'     formula = km_formula,
-#'     design = design_female,
-#'     legend_title = "Caffeine Consumption",
-#'     time_unit = "days", # Use "days" so divisor is 1
-#'     time_breaks = seq(0, 240, by = 60),
-#'     palette = distinct_palette,
-#'     show_pval = TRUE,
-#'     show_censor_marks = TRUE
-#'   )
-#'
-#'   # 7. Display the plot (and correct the x-axis label)
-#'   if (requireNamespace("ggplot2", quietly = TRUE)) {
-#'     km_results_female$plot +
-#'       ggplot2::labs(x = "Follow-up Time (Months)")
-#'   }
-#'
-#'   # 8. Print the at-risk table
-#'   print(km_results_female$table)
-#'
-#' }
+#' km$plot          # a ggplot of the weighted survival curves
+#' print(km$table)  # the number-at-risk table
 #' }
 svykmplot <- function(
     formula, # e.g., Surv(stime, status) ~ age_meno
@@ -106,6 +87,7 @@ svykmplot <- function(
     risk_table_title = "Number at Risk",
     palette = NULL,
     show_pval = TRUE,
+    se = TRUE,
     show_censor_marks = TRUE,
     base_font_size = 11,
     table_font_size = 3.5
@@ -157,7 +139,7 @@ svykmplot <- function(
 
   # --- 2. Run Survey Survival Calculations ---
 
-  svy_fit_object <- survey::svykm(formula, design = design_clean, se = TRUE)
+  svy_fit_object <- survey::svykm(formula, design = design_clean, se = se)
 
   n_strata <- length(svy_fit_object)
   strata_names <- names(svy_fit_object)
@@ -177,7 +159,8 @@ svykmplot <- function(
     data.frame(
       time = svy_fit_object[[.x]]$time,
       surv = svy_fit_object[[.x]]$surv,
-      varlog = svy_fit_object[[.x]]$varlog,
+      # svykm only returns varlog when se = TRUE; use NA otherwise.
+      varlog = if (isTRUE(se)) svy_fit_object[[.x]]$varlog else NA_real_,
       strata = strata_names[.x]
     )
   })
@@ -237,11 +220,18 @@ svykmplot <- function(
     curve_data,
     ggplot2::aes(x = .data$time, color = .data$strata, fill = .data$strata)
   ) +
-    ggplot2::geom_step(ggplot2::aes(y = .data$surv), lwd = 1) +
-    ggplot2::geom_ribbon(
-      ggplot2::aes(ymin = .data$lower_ci, ymax = .data$upper_ci),
-      alpha = 0.2, linetype = 0
-    ) +
+    ggplot2::geom_step(ggplot2::aes(y = .data$surv), lwd = 1)
+
+  # Confidence bands are only available (and only drawn) when se = TRUE.
+  if (isTRUE(se)) {
+    p_surv <- p_surv +
+      ggplot2::geom_ribbon(
+        ggplot2::aes(ymin = .data$lower_ci, ymax = .data$upper_ci),
+        alpha = 0.2, linetype = 0
+      )
+  }
+
+  p_surv <- p_surv +
     ggplot2::theme_classic(base_size = base_font_size) +
     ggplot2::labs(
       y = "Survey-Weighted Survival Probability",
@@ -334,7 +324,7 @@ svykmplot <- function(
   # --- 5. Combine and return ---
 
   printable_table <- table_data %>%
-    tidyr::pivot_wider(names_from = .data$time, values_from = .data$n.risk) %>%
+    tidyr::pivot_wider(names_from = "time", values_from = "n.risk") %>%
     dplyr::rename(!!legend_title := !!rlang::sym(strata_var))
 
   return(

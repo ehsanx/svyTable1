@@ -10,54 +10,38 @@
 #' @param plot A logical value. If `TRUE`, an ROC curve is plotted. Defaults to `FALSE`.
 #'
 #' @return
-#' If `plot = FALSE` (default), returns a `data.frame` with the AUC, SE, and 95% CI.
-#' If `plot = TRUE`, invisibly returns a list containing the summary `data.frame`
-#' and another `data.frame` with the ROC curve coordinates (TPR and FPR).
+#' If `plot = FALSE` (default), a one-row `data.frame` with columns `AUC`, `SE`,
+#' `CI_Lower` and `CI_Upper`. The standard error is computed across the design's
+#' replicate weights and the 95\% confidence interval is built on the logit scale
+#' (so it stays within `[0, 1]`); both are therefore conditional on the
+#' replication scheme used to build `design`. If `plot = TRUE`, an ROC curve is
+#' drawn and a list is returned invisibly with the summary `data.frame` and a
+#' `data.frame` of ROC coordinates (TPR and FPR).
 #'
-#' @importFrom survey withReplicates SE
+#' @importFrom survey withReplicates SE degf
 #' @importFrom WeightedROC WeightedROC WeightedAUC
-#' @importFrom stats model.frame model.matrix coef plogis weights
+#' @importFrom stats model.frame model.matrix coef plogis qlogis qt weights
 #' @importFrom graphics plot abline title
 #'
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' # Ensure required packages are loaded
-#' if (requireNamespace("survey", quietly = TRUE) &&
-#'     requireNamespace("NHANES", quietly = TRUE) &&
-#'     requireNamespace("dplyr", quietly = TRUE)) {
+#' \donttest{
+#' data(nhanes_mortality, package = "svyTable1")
+#' nhanes_mortality$htn01 <- as.numeric(nhanes_mortality$htn == "Yes")
 #'
-#'   # 1. Prepare Data
-#'   data(NHANESraw, package = "NHANES")
-#'   nhanes_data <- NHANESraw %>%
-#'     dplyr::filter(Age >= 20) %>%
-#'     dplyr::mutate(ObeseStatus = factor(ifelse(BMI >= 30, "Obese", "Not Obese"),
-#'                                        levels = c("Not Obese", "Obese"))) %>%
-#'     dplyr::filter(complete.cases(ObeseStatus, Age, Gender, Race1,
-#'                                  WTMEC2YR, SDMVPSU, SDMVSTRA))
+#' # svyAUC requires a replicate-weights design.
+#' design <- survey::svydesign(
+#'   id = ~psu, strata = ~strata, weights = ~survey_weight,
+#'   nest = TRUE, data = nhanes_mortality
+#' )
+#' rep_design <- survey::as.svrepdesign(design)
 #'
-#'   # 2. Create a replicate design object
-#'   std_design <- survey::svydesign(
-#'     ids = ~SDMVPSU,
-#'     strata = ~SDMVSTRA,
-#'     weights = ~WTMEC2YR,
-#'     nest = TRUE,
-#'     data = nhanes_data
-#'   )
-#'   rep_design <- survey::as.svrepdesign(std_design)
+#' fit <- survey::svyglm(htn01 ~ age + sex + smoking,
+#'                       design = rep_design, family = quasibinomial())
 #'
-#'   # 3. Fit a survey logistic regression model using the replicate design
-#'   fit_obesity_rep <- survey::svyglm(
-#'     ObeseStatus ~ Age + Gender + Race1,
-#'     design = rep_design,
-#'     family = quasibinomial()
-#'   )
-#'
-#'   # 4. Calculate the design-correct AUC
-#'   auc_results <- svyAUC(fit_obesity_rep, rep_design)
-#'   print(auc_results)
-#' }
+#' # AUC with a design-correct SE and a logit-scale 95% CI.
+#' svyAUC(fit, rep_design)
 #' }
 svyAUC <- function(fit, design, plot = FALSE) {
 
@@ -108,25 +92,38 @@ svyAUC <- function(fit, design, plot = FALSE) {
     return.replicates = TRUE
   )
 
-  # Manually calculate the confidence interval
-  auc_estimate <- result$theta
-  se <- survey::SE(result)
+  # Point estimate and design-correct SE (variance across replicate weights).
+  auc_estimate <- as.numeric(result$theta)
+  se <- as.numeric(survey::SE(result))
+
+  # Critical value from the design degrees of freedom rather than a fixed 1.96.
+  df <- survey::degf(design)
+  crit <- stats::qt(0.975, df)
+
+  # Build the 95% CI on the logit scale and back-transform, so the interval
+  # cannot fall outside the valid [0, 1] range of an AUC. At the boundaries
+  # (where the logit is undefined) fall back to a clamped Wald interval.
+  if (is.finite(auc_estimate) && auc_estimate > 0 && auc_estimate < 1) {
+    se_logit <- se / (auc_estimate * (1 - auc_estimate))
+    ci_lower <- stats::plogis(stats::qlogis(auc_estimate) - crit * se_logit)
+    ci_upper <- stats::plogis(stats::qlogis(auc_estimate) + crit * se_logit)
+  } else {
+    ci_lower <- max(0, auc_estimate - crit * se)
+    ci_upper <- min(1, auc_estimate + crit * se)
+  }
 
   summary_df <- data.frame(
     AUC = auc_estimate,
     SE = se,
-    CI_Lower = auc_estimate - 1.96 * se,
-    CI_Upper = auc_estimate + 1.96 * se
+    CI_Lower = ci_lower,
+    CI_Upper = ci_upper
   )
   rownames(summary_df) <- NULL
 
   # --- PLOTTING LOGIC ---
   if (plot) {
-    # Calculate ROC curve points using the full-sample weights
+    # Calculate ROC curve points using the full-sample weights.
     full_weights <- weights(design, "sampling")
-    roc_data <- auc_statistic(full_weights, design$variables) # Temporarily re-run to get roc_curve
-
-    # Actually need the curve, not just the AUC
     predictions <- predict(fit, newdata = design$variables, type = "response")
     outcome <- design$variables[[outcome_name]]
     if(is.factor(outcome)) {

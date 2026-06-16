@@ -346,12 +346,12 @@ jointeffects <- function(interaction_model,
     final_df <- output_df %>%
       # Use .data pronoun
       dplyr::select(
-        .data$Level1,
-        .data$Level2,
-        Estimate = .data$logEstimate,
-        SE = .data$SE_log,
-        CI.low = .data$CI.low_log,
-        CI.upp = .data$CI.upp_log
+        "Level1",
+        "Level2",
+        Estimate = "logEstimate",
+        SE = "SE_log",
+        CI.low = "CI.low_log",
+        CI.upp = "CI.upp_log"
       )
   } else { # scale == "ratio"
     # Round ratio scale columns if digits specified
@@ -366,12 +366,12 @@ jointeffects <- function(interaction_model,
     final_df <- output_df %>%
       # Use .data pronoun
       dplyr::select(
-        .data$Level1,
-        .data$Level2,
-        Estimate = .data$Estimate_ratio,
-        SE = .data$SE_ratio,
-        CI.low = .data$CI.low_ratio,
-        CI.upp = .data$CI.upp_ratio
+        "Level1",
+        "Level2",
+        Estimate = "Estimate_ratio",
+        SE = "SE_ratio",
+        CI.low = "CI.low_ratio",
+        CI.upp = "CI.upp_ratio"
         # CI_formatted column is now completely removed
       )
   }

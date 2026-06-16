@@ -130,16 +130,16 @@ svydiag <- function(fit, p_threshold = 0.05, rse_threshold = 30) {
     ) %>%
     # Reorder and select the final columns for a clean output
     dplyr::select(
-      .data$Term,
-      .data$Estimate,
-      .data$SE,
-      .data$p.value,
-      .data$is_significant,
-      .data$CI_Lower,
-      .data$CI_Upper,
-      .data$CI_Width,
-      .data$RSE_percent,
-      .data$is_rse_high
+      "Term",
+      "Estimate",
+      "SE",
+      "p.value",
+      "is_significant",
+      "CI_Lower",
+      "CI_Upper",
+      "CI_Width",
+      "RSE_percent",
+      "is_rse_high"
     )
 
   return(reliability_df)

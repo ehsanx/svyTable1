@@ -20,8 +20,10 @@ that was used to fit the model.}
 fitted probabilities. Defaults to 10 (deciles).}
 }
 \value{
-A `data.frame` containing the F-statistic, the numerator (df1) and
-denominator (df2) degrees of freedom, and the p-value for the test.
+A one-row `data.frame` with columns `F_statistic`, `df1` (numerator df),
+`df2` (denominator df) and `p_value` for the Archer-Lemeshow design-based
+goodness-of-fit test. A non-significant p-value (e.g. p > 0.05) is consistent
+with adequate fit; it does not prove the model is correctly specified.
 }
 \description{
 Performs an Archer-Lemeshow goodness-of-fit (GOF) test for logistic
@@ -36,41 +38,21 @@ Wald test. A non-significant p-value (e.g., p > 0.05) suggests no evidence
 of a poor fit.
 }
 \examples{
-\dontrun{
-# Ensure required packages are loaded
-if (requireNamespace("survey", quietly = TRUE) &&
-    requireNamespace("NHANES", quietly = TRUE) &&
-    requireNamespace("dplyr", quietly = TRUE)) {
+\donttest{
+data(nhanes_mortality, package = "svyTable1")
+nhanes_mortality$htn01 <- as.numeric(nhanes_mortality$htn == "Yes")
 
-  # 1. Prepare Data
-  data(NHANESraw, package = "NHANES")
-  nhanes_data <- NHANESraw \%>\%
-    dplyr::filter(Age >= 20) \%>\%
-    dplyr::mutate(ObeseStatus = factor(ifelse(BMI >= 30, "Obese", "Not Obese"),
-                                       levels = c("Not Obese", "Obese"))) \%>\%
-    dplyr::filter(complete.cases(ObeseStatus, Age, Gender, Race1,
-                                 WTMEC2YR, SDMVPSU, SDMVSTRA))
+# The Archer-Lemeshow test uses a standard (non-replicate) survey design.
+design <- survey::svydesign(
+  id = ~psu, strata = ~strata, weights = ~survey_weight,
+  nest = TRUE, data = nhanes_mortality
+)
 
-  # 2. Create a replicate design object
-  std_design <- survey::svydesign(
-    ids = ~SDMVPSU,
-    strata = ~SDMVSTRA,
-    weights = ~WTMEC2YR,
-    nest = TRUE,
-    data = nhanes_data
-  )
-  rep_design <- survey::as.svrepdesign(std_design)
+fit <- survey::svyglm(htn01 ~ age + sex + smoking,
+                      design = design, family = quasibinomial())
 
-  # 3. Fit a survey logistic regression model using the replicate design
-  fit_obesity_rep <- survey::svyglm(
-    ObeseStatus ~ Age + Gender + Race1,
-    design = rep_design,
-    family = quasibinomial()
-  )
-
-  # 4. Calculate the design-correct AUC
-  auc_results <- svyAUC(fit_obesity_rep, rep_design)
-  print(auc_results)
-}
+# A non-significant p-value is consistent with adequate fit (it does not
+# prove the model is correctly specified).
+svygof(fit, design, G = 10)
 }
 }

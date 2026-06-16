@@ -9,3 +9,6 @@
 ^_pkgdown\.yml$
 ^docs$
 ^pkgdown$
+^.*\.Rhistory$
+^_scratch$
+^Rplots\.pdf$

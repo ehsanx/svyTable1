@@ -35,8 +35,18 @@
 #'   reliability metrics. This includes the RSE and specific TRUE/FALSE columns
 #'   (e.g., `fail_n_30`, `fail_eff_n_30`) for each suppression rule. Defaults to FALSE.
 #'
-#' @return If `return_metrics` is FALSE (default), returns a data.frame. If TRUE,
-#'   returns a list with two elements: `formatted_table` and `reliability_metrics`.
+#' @return If `return_metrics` is FALSE (default), a `data.frame` (the formatted
+#'   Table 1). Its first two columns are `Variable` and `Level`; the remaining
+#'   columns are `Overall` plus one column per level of `strata_var` (including a
+#'   `Missing` column when the stratifier has NAs). Cells hold unweighted counts
+#'   with weighted percentages for categorical variables and "mean (SD)" for
+#'   numeric variables; suppressed cells (when `reliability_checks = TRUE`) are
+#'   shown as `"*"`. If `return_metrics` is TRUE, a list with two elements:
+#'   `formatted_table` (the data.frame above) and `reliability_metrics` (a
+#'   data.frame with one row per evaluated cell giving `n`, `df`, `deff`,
+#'   `effective_n`, the confidence-interval bounds, `rse`, the logical
+#'   suppression flags `fail_n_30`/`fail_eff_n_30`/`fail_df_8`/`fail_ciw_30`/
+#'   `fail_rciw_130`/`fail_rse_30`, and overall `suppressed`).
 #'
 #' @importFrom survey svytable svymean svyby svyvar svyciprop degf SE
 #' @import stats
@@ -112,7 +122,11 @@ svytable1 <- function(design, strata_var, table_vars,
   }
 
   # --- 2. Table Generation ---
-  if (nrow(df) == 0) return(data.frame(Error = "Input data has 0 rows"))
+  if (nrow(df) == 0) {
+    stop("svytable1(): the survey design has 0 rows. The analytic dataset is ",
+         "empty - check your filter/drop_na/subset steps before building the design.",
+         call. = FALSE)
+  }
 
   if (any(is.na(df[[strata_var]]))) {
     strata_as_char <- as.character(df[[strata_var]])
@@ -229,7 +243,11 @@ svytable1 <- function(design, strata_var, table_vars,
               ci_low <- metrics$ci_low[level_index]; ci_high <- metrics$ci_high[level_index]
               pct_val <- metrics$prop[level_index]; se <- metrics$se[level_index]
 
-              effective_n <- if(!is.na(deff)) n / max(1, deff) else 0
+              # Effective sample size = n / design effect. Guard only against a
+              # missing or non-positive deff (pathological in tiny cells); do NOT
+              # floor deff at 1, which would wrongly over-suppress cells that are
+              # more efficient than a simple random sample (deff < 1).
+              effective_n <- if (is.na(deff) || deff <= 0) 0 else n / deff
               ciw <- ci_high - ci_low
               rciw <- if(!is.na(pct_val) && pct_val > 0) (ciw / pct_val) * 100 else Inf
               rse <- if(!is.na(pct_val) && pct_val > 0) (se / pct_val) * 100 else Inf

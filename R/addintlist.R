@@ -25,6 +25,8 @@
 #' @param conf.level Confidence level for the interval (default 0.95).
 #' @param digits Integer. Number of decimal places for rounding estimates and
 #'   CIs in the final table. Default is 3. (Set to NULL for no rounding).
+#' @param verbose Logical. If `TRUE`, prints a progress message for each
+#'   factor-level combination as it is calculated. Defaults to `FALSE`.
 #'
 #' @return A `tibble` (data frame) summarizing the additive interaction results.
 #'   Columns include:
@@ -118,7 +120,8 @@ addintlist <- function(model,
                        factor2_name,
                        measures = "all",
                        conf.level = 0.95,
-                       digits = 3) { # Added digits argument
+                       digits = 3,
+                       verbose = FALSE) {
 
   # Check if the core calculation function 'addint' exists
   if (!exists("addint") || !is.function(addint)) {
@@ -205,7 +208,7 @@ addintlist <- function(model,
     for (level2 in non_ref_levels2) {
 
       comparison_name <- paste0(factor1_name, "_", level1, "_vs_", factor2_name, "_", level2)
-      message("Calculating for: ", comparison_name)
+      if (verbose) message("Calculating for: ", comparison_name)
 
       # --- Construct coefficient names ---
       exp1_coef_name <- paste0(factor1_name, level1)
@@ -306,8 +309,8 @@ addintlist <- function(model,
   # --- Final structure ---
   final_table <- final_table %>%
     # Use .data pronoun
-    dplyr::relocate(.data$Factor1, .data$Level1, .data$Factor2, .data$Level2,
-                    .data$Measure, .data$Estimate, .data$SE, .data$CI_low, .data$CI_upp)
+    dplyr::relocate("Factor1", "Level1", "Factor2", "Level2",
+                    "Measure", "Estimate", "SE", "CI_low", "CI_upp")
 
   return(final_table)
 }

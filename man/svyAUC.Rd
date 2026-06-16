@@ -14,9 +14,13 @@ svyAUC(fit, design, plot = FALSE)
 \item{plot}{A logical value. If `TRUE`, an ROC curve is plotted. Defaults to `FALSE`.}
 }
 \value{
-If `plot = FALSE` (default), returns a `data.frame` with the AUC, SE, and 95% CI.
-If `plot = TRUE`, invisibly returns a list containing the summary `data.frame`
-and another `data.frame` with the ROC curve coordinates (TPR and FPR).
+If `plot = FALSE` (default), a one-row `data.frame` with columns `AUC`, `SE`,
+`CI_Lower` and `CI_Upper`. The standard error is computed across the design's
+replicate weights and the 95\% confidence interval is built on the logit scale
+(so it stays within `[0, 1]`); both are therefore conditional on the
+replication scheme used to build `design`. If `plot = TRUE`, an ROC curve is
+drawn and a list is returned invisibly with the summary `data.frame` and a
+`data.frame` of ROC coordinates (TPR and FPR).
 }
 \description{
 This function calculates the Area Under the Curve (AUC) and its design-correct
@@ -24,41 +28,21 @@ standard error and 95% confidence interval. It can also generate a plot of
 the weighted ROC curve.
 }
 \examples{
-\dontrun{
-# Ensure required packages are loaded
-if (requireNamespace("survey", quietly = TRUE) &&
-    requireNamespace("NHANES", quietly = TRUE) &&
-    requireNamespace("dplyr", quietly = TRUE)) {
+\donttest{
+data(nhanes_mortality, package = "svyTable1")
+nhanes_mortality$htn01 <- as.numeric(nhanes_mortality$htn == "Yes")
 
-  # 1. Prepare Data
-  data(NHANESraw, package = "NHANES")
-  nhanes_data <- NHANESraw \%>\%
-    dplyr::filter(Age >= 20) \%>\%
-    dplyr::mutate(ObeseStatus = factor(ifelse(BMI >= 30, "Obese", "Not Obese"),
-                                       levels = c("Not Obese", "Obese"))) \%>\%
-    dplyr::filter(complete.cases(ObeseStatus, Age, Gender, Race1,
-                                 WTMEC2YR, SDMVPSU, SDMVSTRA))
+# svyAUC requires a replicate-weights design.
+design <- survey::svydesign(
+  id = ~psu, strata = ~strata, weights = ~survey_weight,
+  nest = TRUE, data = nhanes_mortality
+)
+rep_design <- survey::as.svrepdesign(design)
 
-  # 2. Create a replicate design object
-  std_design <- survey::svydesign(
-    ids = ~SDMVPSU,
-    strata = ~SDMVSTRA,
-    weights = ~WTMEC2YR,
-    nest = TRUE,
-    data = nhanes_data
-  )
-  rep_design <- survey::as.svrepdesign(std_design)
+fit <- survey::svyglm(htn01 ~ age + sex + smoking,
+                      design = rep_design, family = quasibinomial())
 
-  # 3. Fit a survey logistic regression model using the replicate design
-  fit_obesity_rep <- survey::svyglm(
-    ObeseStatus ~ Age + Gender + Race1,
-    design = rep_design,
-    family = quasibinomial()
-  )
-
-  # 4. Calculate the design-correct AUC
-  auc_results <- svyAUC(fit_obesity_rep, rep_design)
-  print(auc_results)
-}
+# AUC with a design-correct SE and a logit-scale 95\% CI.
+svyAUC(fit, rep_design)
 }
 }

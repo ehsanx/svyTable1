@@ -69,86 +69,32 @@ with consistent column structure, including scale-appropriate standard errors.
 }
 \examples{
 \donttest{
-# --- Load required libraries for the example ---
-if (requireNamespace("survey", quietly = TRUE) &&
-    requireNamespace("NHANES", quietly = TRUE) &&
-    requireNamespace("dplyr", quietly = TRUE) &&
-    requireNamespace("tidyr", quietly = TRUE) &&
-    requireNamespace("msm", quietly = TRUE)) { # msm needed for SE calculation
+data(nhanes_mortality, package = "svyTable1")
+nhanes_mortality$htn01 <- as.numeric(nhanes_mortality$htn == "Yes")
 
-  library(survey)
-  library(NHANES)
-  library(dplyr)
-  library(tidyr)
-  library(msm) # Load msm
+# Build a joint variable from two factors, then fit a joint-variable model.
+nhanes_mortality$sex_insulin <- interaction(
+  nhanes_mortality$sex, nhanes_mortality$insulin, sep = "_"
+)
 
-  # --- 1. Data Preparation (NHANES Example) ---
-  data(NHANESraw)
+design <- survey::svydesign(
+  id = ~psu, strata = ~strata, weights = ~survey_weight,
+  nest = TRUE, data = nhanes_mortality
+)
 
-  vars_needed <- c("Age", "Race1", "BPSysAve", "BMI", "ObeseStatus", "Hypertension_130",
-                   "SDMVPSU", "SDMVSTRA", "WTMEC2YR")
+joint_fit <- survey::svyglm(htn01 ~ sex_insulin + age,
+                            design = design, family = quasibinomial())
 
-  nhanes_adults_processed <- NHANESraw \%>\%
-    filter(Age >= 20) \%>\%
-    mutate(
-      ObeseStatus = factor(ifelse(BMI >= 30, "Obese", "Not Obese"),
-                           levels = c("Not Obese", "Obese")),
-      Hypertension_130 = factor(ifelse(BPSysAve >= 130, "Yes", "No"),
-                                levels = c("No", "Yes")),
-      Race1 = relevel(as.factor(Race1), ref = "White")
-    ) \%>\%
-    select(all_of(vars_needed)) \%>\%
-    drop_na()
-
-  adult_design_binary <- svydesign(
-    id = ~SDMVPSU, strata = ~SDMVSTRA, weights = ~WTMEC2YR,
-    nest = TRUE, data = nhanes_adults_processed
-  )
-
-  # --- 2. Create Joint Variable and Fit Joint Model ---
-  adult_design_binary <- update(adult_design_binary,
-    Race1_ObeseStatus = interaction(Race1, ObeseStatus, sep = "_", drop = TRUE)
-  )
-  adult_design_binary <- update(adult_design_binary,
-    Race1_ObeseStatus = relevel(Race1_ObeseStatus, ref = "White_Not Obese")
-  )
-
-  joint_model_logit <- svyglm(
-    Hypertension_130 ~ Race1_ObeseStatus + Age,
-    design = adult_design_binary, family = quasibinomial()
-  )
-
-  # --- 3. Run the function ---
-  f1_levels <- levels(adult_design_binary$variables$Race1)
-  f2_levels <- levels(adult_design_binary$variables$ObeseStatus)
-
-  # --- Example 1: Output on Ratio scale ---
-  simple_effects_ratio <- inteffects(
-    joint_model = joint_model_logit,
-    joint_var_name = "Race1_ObeseStatus",
-    factor1_name = "Race1",
-    factor2_name = "ObeseStatus",
-    factor1_levels = f1_levels,
-    factor2_levels = f2_levels,
-    level_separator = "_",
-    scale = "ratio"
-  )
-  print("--- Output on Ratio Scale ---")
-  print(simple_effects_ratio, n = 50)
-
-  # --- Example 2: Output on Log scale ---
-  simple_effects_log <- inteffects(
-    joint_model = joint_model_logit,
-    joint_var_name = "Race1_ObeseStatus",
-    factor1_name = "Race1",
-    factor2_name = "ObeseStatus",
-    factor1_levels = f1_levels,
-    factor2_levels = f2_levels,
-    level_separator = "_",
-    scale = "log"
-  )
-  print("--- Output on Log Scale ---")
-  print(simple_effects_log, n = 50)
-}
+# Stratum-specific (simple) effects reconstructed from the joint model.
+inteffects(
+  joint_model     = joint_fit,
+  joint_var_name  = "sex_insulin",
+  factor1_name    = "sex",
+  factor2_name    = "insulin",
+  factor1_levels  = c("Male", "Female"),  # reference level first
+  factor2_levels  = c("No", "Yes"),       # reference level first
+  level_separator = "_",
+  scale = "ratio"
+)
 }
 }

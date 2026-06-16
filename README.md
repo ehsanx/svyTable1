@@ -1,33 +1,30 @@
-# svyTable1: Create Publication-Ready Survey-Weighted Summary Tables
+# svyTable1: Survey-Weighted Tables and Diagnostics for Epidemiology
 
-**svyTable1** is an R package for creating publication-ready tables and visualizations from complex survey and epidemiologic analyses. It streamlines the creation of descriptive “Table 1” summaries, supports multiply imputed regression models, provides diagnostic and goodness-of-fit tools, enables interaction effect reporting, and supports survey-weighted survival analysis.
+**svyTable1** is a teaching/helper R package for the UBC SPPH 604 course and the
+[EpiMethods](https://ehsanx.github.io/EpiMethods/) book. It helps students build
+publication-ready tables and diagnostics from complex survey data (such as
+NHANES): descriptive "Table 1" summaries, survey-weighted regression and survival
+diagnostics, additive-interaction reporting, and pooled multiply-imputed models.
+
+All examples below use the bundled `nhanes_mortality` dataset, so they run without
+any additional downloads.
 
 ---
 
 ## ✨ Key Features
 
-- **Survey Design Integration:** Built on `svydesign` objects from the **survey** package.
-- **Automatic Missing Data Handling:** Automatically reports missing values for each variable.
-- **Best Practice Reporting:** Defaults to “mixed mode” with unweighted Ns and weighted estimates.
-- **Reliability Checks:** Implements NCHS Data Presentation Standards for Proportions.
-- **Flexible Output Modes:** `"mixed"`, `"weighted"`, and `"unweighted"`.
-- **Survival Plotting:** `svykmplot()` for publication-ready survey-weighted Kaplan Meier plots with number at risk.
-- **Regression Diagnostics:** `svydiag()` to evaluate coefficient reliability.
-- **Goodness-of-Fit:** `svygof()` to perform Archer-Lemeshow GOF tests for survey logistic regression.
-- **Design-Correct AUC:** `svyAUC()` for valid AUC estimation under complex survey designs.
-- **Multiple Imputation Support:** `svypooled()` generates fallacy-safe pooled regression tables from `mice`.
-- **Interaction Analysis:**
-  - *Joint effects*: `jointeffects`
-  - *Simple effects*: `inteffects`
-  - *Additive interaction*: `addint`, `addintlist`
-- **Survey Cox Regression with Contrast Estimation:**  
-  `svycoxph_CE()` produces hazard ratio contrasts for groups or combinations.
-- **MI-Compatible Cox Regression with Contrasts:**  
-  `svycoxph_CE_mi()` extends the above to multiply imputed datasets.
-- **Plotting Interaction Effects:**  
-  `plotint()` generates publication-ready plots for interaction effects estimated with `addint`, `jointeffects`, or `inteffects`.
-- **Automated Interaction Reporting:**  
-  `reportint()` creates narrative-ready summaries of interaction effects, RERI, AP, and joint effects.
+- **Built on the `survey` package** — works with `svydesign` objects.
+- **Descriptive tables** — `svytable1()` with unweighted *n* + weighted %, automatic
+  missing-data handling, and optional NCHS reliability suppression.
+- **Regression diagnostics** — `svydiag()` (coefficient reliability), `svygof()`
+  (Archer–Lemeshow goodness-of-fit), `svyAUC()` (design-correct AUC).
+- **Interaction analysis** — additive interaction (`addint()`, `addintlist()`),
+  joint effects (`jointeffects()`), simple effects (`inteffects()`), a multi-panel
+  report (`reportint()`), and interaction plots (`plotint()`).
+- **Survival analysis** — survey-weighted Kaplan–Meier plots with number-at-risk
+  (`svykmplot()`) and constant-effect / proportional-hazards diagnostics
+  (`svycoxph_CE()`, `svycoxph_CE_mi()`).
+- **Multiple imputation** — fallacy-safe pooled tables from `mice` (`svypooled()`).
 
 ---
 
@@ -40,116 +37,149 @@ devtools::install_github("ehsanx/svyTable1", build_vignettes = TRUE, dependencie
 
 ---
 
-## 🔍 Usage Examples (Selected)
-
-Below are a few key examples. See vignettes for complete coverage.
-
----
-
-## Example: Interaction Reporting with reportint()
+## 🚀 Quick start
 
 ```r
 library(svyTable1)
 library(survey)
-library(dplyr)
 
-data(NHANESraw)
+options(survey.lonely.psu = "adjust")   # correct SEs for NHANES-style designs
 
-analytic <- NHANESraw %>%
-  filter(Age >= 20) %>%
-  mutate(
-    Obese = factor(ifelse(BMI >= 30, "Yes", "No")),
-    Hypertension = factor(ifelse(BPSysAve >= 130, "Yes", "No"))
-  ) %>%
-  drop_na(Age, Race1, Obese, Hypertension, SDMVPSU, SDMVSTRA, WTMEC2YR)
+data(nhanes_mortality)
+nhanes_mortality$htn01 <- as.numeric(nhanes_mortality$htn == "Yes")
 
 design <- svydesign(
-  id = ~SDMVPSU, strata = ~SDMVSTRA, weights = ~WTMEC2YR,
-  nest = TRUE, data = analytic
+  id = ~psu, strata = ~strata, weights = ~survey_weight,
+  nest = TRUE, data = nhanes_mortality
 )
-
-model_int <- svyglm(
-  Hypertension ~ Obese * Race1 + Age,
-  design = design,
-  family = quasibinomial()
-)
-
-reportint(model_int, factor1_name = "Obese", factor2_name = "Race1")
 ```
 
----
-
-## Example: Plotting Interaction Effects with plotint()
+### Descriptive "Table 1"
 
 ```r
-interaction_results <- addint(
-  model = model_int,
-  factor1_name = "Obese",
-  factor2_name = "Race1",
-  measures = "all"
+svytable1(
+  design     = design,
+  strata_var = "htn",
+  table_vars = c("age", "sex", "smoking", "bmi.cat")
 )
 
-plotint(interaction_results, measure = "RERI")
+# With NCHS reliability checks and a detailed metrics table:
+svytable1(
+  design     = design,
+  strata_var = "htn",
+  table_vars = c("age", "sex", "smoking", "bmi.cat"),
+  reliability_checks = TRUE,
+  return_metrics     = TRUE
+)
 ```
 
 ---
 
-## Example: Survey Cox Regression with Contrast Estimation
+## 🔍 Regression diagnostics
+
+```r
+fit <- svyglm(htn01 ~ age + sex + smoking, design = design, family = quasibinomial())
+
+# Per-coefficient reliability (SE, p, CI width, RSE)
+svydiag(fit)
+
+# Archer-Lemeshow goodness-of-fit (use a standard, non-replicate design)
+svygof(fit, design)
+
+# Design-correct AUC (needs a replicate-weights design); CI is on the logit scale
+rep_design <- as.svrepdesign(design)
+fit_rep <- svyglm(htn01 ~ age + sex + smoking, design = rep_design,
+                  family = quasibinomial())
+svyAUC(fit_rep, rep_design)
+```
+
+---
+
+## 🔗 Interaction analysis
+
+```r
+int_fit <- svyglm(htn01 ~ sex * insulin + age, design = design,
+                  family = quasibinomial())
+
+# Additive interaction measures (RERI, AP, Synergy index) for every level pair
+addintlist(int_fit, factor1_name = "sex", factor2_name = "insulin", measures = "all")
+
+# Joint effects of the two factors
+jointeffects(int_fit, "sex", "insulin")
+
+# Multi-panel interaction report (joint, stratum-specific, additive, multiplicative)
+report <- reportint(int_fit, factor1_name = "sex", factor2_name = "insulin",
+                    output = "list")
+report$Interaction_report
+```
+
+> **Note on scale.** `addint()`/`addintlist()` compute RERI/AP/S by exponentiating
+> the model coefficients. For logistic models these are odds ratios, which only
+> approximate risk ratios when the outcome is rare. Interpret additive-interaction
+> measures on the risk-ratio scale with care for common outcomes.
+
+Plotting an interaction with a continuous moderator:
+
+```r
+int_fit2 <- svyglm(htn01 ~ insulin * age, design = design, family = quasibinomial())
+
+plotint(model = int_fit2, effect = "insulin", moderator = "age",
+        data = nhanes_mortality)
+```
+
+---
+
+## ⏳ Survival analysis
 
 ```r
 library(survival)
 
-cox_model <- svycoxph(
-  Surv(followup_time, death) ~ Obese + Age + Race1,
-  design = design
+# Survey-weighted Kaplan-Meier curves with a number-at-risk table.
+# se = TRUE adds confidence bands but is slow on large designs; use se = FALSE
+# to draw curves only.
+km <- svykmplot(
+  formula     = Surv(stime, status) ~ caff,
+  design      = subset(design, sex == "Female"),
+  time_unit   = "days",
+  time_breaks = seq(0, 240, by = 60),
+  show_pval   = TRUE,
+  se          = FALSE
 )
+km$plot
+print(km$table)
 
+# Constant-effect / proportional-hazards diagnostic for a Cox model
 svycoxph_CE(
-  model = cox_model,
-  contrast_var = "Obese",
-  ref = "No",
-  target = "Yes"
+  formula_rhs = "sex + age",
+  design      = design,
+  var_to_test = "age",
+  time_var    = "stime",
+  status_var  = "status",
+  n_intervals = 3
 )
 ```
 
----
-
-## Example: Cox Contrasts with Multiple Imputation
-
-```r
-library(mice)
-
-imp <- mice(analytic, m = 5, seed = 123, printFlag = FALSE)
-
-fit_list <- with(imp, {
-  d <- svydesign(id = ~SDMVPSU, strata = ~SDMVSTRA, weights = ~WTMEC2YR,
-                 nest = TRUE, data = complete(data))
-  svycoxph(Surv(followup_time, death) ~ Obese + Age + Race1, design = d)
-})
-
-svycoxph_CE_mi(fit_list, contrast_var = "Obese", ref = "No", target = "Yes")
-```
+A multiple-imputation version of the Cox diagnostic
+(`svycoxph_CE_mi()`) and a fallacy-safe pooled table (`svypooled()`) are
+demonstrated in `?svycoxph_CE_mi`, `?svypooled`, and the package vignettes.
 
 ---
 
-## Example: Creating Interaction Tables
+## 📚 Learn more
 
 ```r
-addintlist(
-  model = model_int,
-  factor1_name = "Obese",
-  factor2_name = "Race1",
-  measures = "all"
-)
+browseVignettes("svyTable1")
 ```
+
+The vignettes follow the SPPH 604 / EpiMethods workflow: descriptive tables →
+model diagnostics → interaction analysis → survival analysis → multiple imputation.
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome.
-
----
+Contributions and bug reports are welcome via the
+[issue tracker](https://github.com/ehsanx/svyTable1/issues).
 
 ## 📜 License
 

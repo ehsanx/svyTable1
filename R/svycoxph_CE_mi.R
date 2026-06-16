@@ -17,9 +17,9 @@
 #' @param tgroup_var A string for the time-interval variable created by
 #'                   \code{survSplit} (default is "tgroup").
 #' @param time_var A string for the original 'stop' time variable in the
-#'                 split data (default is "followup" or "stime").
-#' @param status_var A string for the event status variable
-#'                   (default is "death" or "status").
+#'                 split data (default is "stime").
+#' @param status_var A string for the event status variable, coded 0/1
+#'                   (default is "status").
 #' @param main_model_fit A pooled \code{svycoxph} fit object (class \code{mipo}). This is the
 #'                       main, un-split model. It is optional, but highly
 #'                       recommended, as the function will print its tidy
@@ -56,7 +56,11 @@
 #'         summarized in the \strong{"Tidy Summary of All Time-Interval Models"}
 #'         table.
 #'
-#' @return A \code{ggplot} object showing the coefficient trend over time.
+#' @return A \code{ggplot} object. The y-axis is the log hazard ratio for
+#'   \code{var_to_test} within each follow-up interval, pooled across imputations
+#'   (Rubin's rules) and plotted against time; a roughly flat trend supports the
+#'   proportional-hazards (constant-effect) assumption. This is a visual
+#'   diagnostic, not a formal hypothesis test.
 #'
 #' @importFrom mice pool
 #' @importFrom dplyr n
@@ -65,147 +69,54 @@
 #' @export
 #'
 #' @examples
-#' \dontrun{
+#' \donttest{
+#' # MI version: test the constant-effect (PH) assumption across follow-up
+#' # intervals, pooling over imputations with Rubin's rules.
+#' if (requireNamespace("mice", quietly = TRUE) &&
+#'     requireNamespace("mitools", quietly = TRUE)) {
 #'
-#' # --- 1. Load Libraries ---
-#' library(svyTable1)
-#' library(dplyr)
-#' library(survival)
-#' library(survey)
-#' library(mitools)
-#' library(mice)
-#' library(ggplot2)
-#' library(knitr)
+#'   library(survival)   # for Surv() / survSplit() in the formula below
+#'   data(nhanes_mortality, package = "svyTable1")
+#'   dat <- nhanes_mortality[nhanes_mortality$stime > 0, ]
+#'   dat$caff_bin <- factor(ifelse(dat$caff == "No consumption", "No", "Yes"))
 #'
-#' # --- 2. Load data and create base design ---
-#' data(nhanes_mortality)
-#' analytic_design <- svydesign(
-#'   strata = ~strata,
-#'   id = ~psu,
-#'   weights = ~survey_weight,
-#'   data = nhanes_mortality,
-#'   nest = TRUE
-#' )
+#'   # Induce missingness, then impute (small m for a fast example only; for a
+#'   # real analysis use m >= 20 and check convergence).
+#'   set.seed(123)
+#'   dat$age[runif(nrow(dat)) < 0.10] <- NA
+#'   imp <- mice::mice(dat[, c("caff_bin", "sex", "age", "stime", "status",
+#'                             "psu", "strata", "survey_weight")],
+#'                     m = 2, maxit = 2, printFlag = FALSE, seed = 123)
+#'   long <- mice::complete(imp, "long", include = FALSE)
 #'
-#' # --- 3. Create analysis data.frame and INDUCE MISSINGNESS in COVARIATES ---
-#' set.seed(123)
-#' data_with_miss <- analytic_design$variables %>%
-#'   filter(stime > 0) %>%
-#'   mutate(
-#'     # Create the exposure variable (complete)
-#'     caff_bin = factor(
-#'       ifelse(caff == "No consumption", "No", "Yes"),
-#'       levels = c("No", "Yes")
-#'     ),
-#'     # Induce 10% missingness in 'age' (a confounder)
-#'     age = ifelse(runif(n()) < 0.10, NA, age),
-#'
-#'     # Induce 15% MAR missingness in 'bmi_cat' (a confounder)
-#'     bmi_cat = factor(ifelse(age > 50 & runif(n()) < 0.15, NA, as.character(bmi.cat)))
+#'   # Split follow-up at the median event time into two intervals.
+#'   cuts <- median(dat$stime[dat$status == 1], na.rm = TRUE)
+#'   long_split <- survSplit(Surv(stime, status) ~ .,
+#'                           data = long, cut = cuts,
+#'                           episode = "tgroup", id = "split_id")
+#'   design_split <- survey::svydesign(
+#'     id = ~psu, strata = ~strata, weights = ~survey_weight, nest = TRUE,
+#'     data = mitools::imputationList(split(long_split, long_split$.imp))
 #'   )
 #'
-#' print("--- Missingness Induced in Covariates ---")
-#' print(mice::md.pattern(data_with_miss[, c("age", "bmi_cat", "caff_bin", "stime", "status")],
-#'                        plot=FALSE))
-#'
-#' # --- 4. Add Nelson-Aalen hazard (auxiliary variable for MICE) ---
-#' data_with_miss$nelson_aalen <- nelsonaalen(
-#'   data_with_miss,
-#'   time = stime,
-#'   status = status
-#' )
-#'
-#' # --- 5. Run MICE ---
-#' print("--- Starting MICE ---")
-#' M_IMPUTATIONS <- 5
-#' MAX_ITERATIONS <- 5
-#'
-#' pred_matrix <- make.predictorMatrix(data_with_miss)
-#' vars_to_keep_as_is <- c("id", "survey.weight", "psu", "strata",
-#'                         "stime", "status", "nelson_aalen", "caff_bin", "sex")
-#' pred_matrix[, vars_to_keep_as_is] <- 0
-#' pred_matrix[vars_to_keep_as_is, ] <- 0
-#'
-#' imputed_data <- mice(
-#'   data_with_miss,
-#'   m = M_IMPUTATIONS,
-#'   maxit = MAX_ITERATIONS,
-#'   predictorMatrix = pred_matrix,
-#'   method = 'pmm',
-#'   seed = 123,
-#'   printFlag = FALSE
-#' )
-#' print("--- MICE Complete ---")
-#'
-#' # --- 6. Create Stacked Long-Format Data ---
-#' impdata_long <- mice::complete(imputed_data, "long", include = FALSE)
-#'
-#' # --- 7. Fit the MAIN (Constant Effect) Model ---
-#' print("--- Fitting Main Pooled (Constant Effect) Model ---")
-#'
-#' allImputations_main <- imputationList(split(impdata_long, impdata_long$.imp))
-#' design_main <- svydesign(
-#'   strata = ~strata,
-#'   id = ~psu,
-#'   weights = ~survey_weight,
-#'   data = allImputations_main,
-#'   nest = TRUE
-#' )
-#'
-#' my_formula <- "caff_bin + sex + age + bmi_cat"
-#' main_formula <- as.formula(paste0("Surv(stime, status) ~ ", my_formula))
-#'
-#' main_fit_list <- with(design_main, svycoxph(main_formula))
-#' main_fit_pooled <- pool(main_fit_list)
-#'
-#' # --- 8. Create the SPLIT-TIME Design ---
-#' print("--- Creating Split-Time Design ---")
-#' event_times <- data_with_miss$stime[data_with_miss$status == 1]
-#' cuts <- quantile(event_times, probs = c(0.2, 0.4, 0.6, 0.8), na.rm = TRUE)
-#'
-#' impdata_long_split <- survSplit(Surv(stime, status) ~ .,
-#'                                 data = impdata_long,
-#'                                 cut = cuts,
-#'                                 episode = "tgroup",
-#'                                 id = "split_id")
-#'
-#' allImputations_split <- imputationList(split(impdata_long_split,
-#'                                              impdata_long_split$.imp))
-#'
-#' design_split <- svydesign(
-#'   strata = ~strata,
-#'   id = ~psu,
-#'   weights = ~survey_weight,
-#'   data = allImputations_split,
-#'   nest = TRUE
-#' )
-#'
-#' # --- 9. Run the PH Test Function and Print the Plot ---
-#' print("--- Calling svycoxph_CE_mi function to test 'caff_binYes' ---")
-#'
-#' my_ph_plot <- svycoxph_CE_mi(
-#'   formula_rhs = my_formula,
-#'   design_split = design_split,
-#'   var_to_test = "caff_binYes", # Test the exposure
-#'   tgroup_var = "tgroup",
-#'   time_var = "stime",
-#'   status_var = "status",
-#'   main_model_fit = main_fit_pooled, # Pass the main model here
-#'   print_split_summary = TRUE,
-#'   show_null_effect = TRUE
-#' )
-#'
-#' # Explicitly print the plot
-#' print(my_ph_plot)
-#'
-#' } # End \dontrun{}
+#'   svycoxph_CE_mi(
+#'     formula_rhs = "caff_bin + sex + age",
+#'     design_split = design_split,
+#'     var_to_test = "caff_binYes",
+#'     tgroup_var = "tgroup",
+#'     time_var = "stime",
+#'     status_var = "status",
+#'     print_split_summary = FALSE
+#'   )
+#' }
+#' }
 
 svycoxph_CE_mi <- function(formula_rhs,
                            design_split,
                            var_to_test,
                            tgroup_var = "tgroup",
-                           time_var = "followup",
-                           status_var = "death",
+                           time_var = "stime",
+                           status_var = "status",
                            main_model_fit = NULL,
                            print_split_summary = TRUE,
                            ...) {

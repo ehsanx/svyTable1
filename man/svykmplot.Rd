@@ -13,6 +13,7 @@ svykmplot(
   risk_table_title = "Number at Risk",
   palette = NULL,
   show_pval = TRUE,
+  se = TRUE,
   show_censor_marks = TRUE,
   base_font_size = 11,
   table_font_size = 3.5
@@ -40,6 +41,11 @@ use for the strata.}
 \item{show_pval}{Logical. If `TRUE`, calculates and displays the
 survey-weighted log-rank test p-value.}
 
+\item{se}{Logical. If `TRUE` (default), computes survey-weighted confidence
+bands via `survey::svykm(se = TRUE)` and draws them as shaded ribbons. The
+standard-error calculation can be slow on large designs; set `se = FALSE`
+to draw the survival curves only (much faster, no confidence bands).}
+
 \item{show_censor_marks}{Logical. If `TRUE`, displays censor markings (`+`)
 on the survival curves.}
 
@@ -62,53 +68,30 @@ with an attached "Number at Risk" table and censor markings, using `ggplot2`
 and `patchwork`.
 }
 \examples{
-\dontrun{
-# This example uses the 'nhanes_mortality' dataset,
+\donttest{
+library(survival)   # for Surv() in the formula below
+data(nhanes_mortality, package = "svyTable1")
 
-if (requireNamespace("survey", quietly = TRUE)) {
+design <- survey::svydesign(
+  id = ~psu, strata = ~strata, weights = ~survey_weight,
+  nest = TRUE, data = nhanes_mortality
+)
 
-  # 1. Load the data
-  data(nhanes_mortality)
+# Survey-weighted Kaplan-Meier curves by caffeine consumption (women only).
+design_female <- subset(design, sex == "Female")
 
-  # 2. Create the main survey design object
-  analytic_design <- survey::svydesign(
-    strata = ~strata,
-    id = ~psu,
-    weights = ~survey_weight,
-    data = nhanes_mortality,
-    nest = TRUE
-  )
+# se = FALSE draws curves only (fast); use se = TRUE to add confidence bands.
+km <- svykmplot(
+  formula = Surv(stime, status) ~ caff,
+  design = design_female,
+  legend_title = "Caffeine consumption",
+  time_unit = "days",
+  time_breaks = seq(0, 240, by = 60),
+  show_pval = TRUE,
+  se = FALSE
+)
 
-  # 3. Create a subsetted design for females
-  design_female <- subset(analytic_design, sex == "Female")
-
-  # 4. Define the formula
-  km_formula <- Surv(stime, status) ~ caff
-
-  # 5. Define a 4-color palette
-  distinct_palette <- c("#377EB8", "#FF7F00", "#4DAF4A", "#E41A1C")
-
-  # 6. Run the function
-  km_results_female <- svykmplot(
-    formula = km_formula,
-    design = design_female,
-    legend_title = "Caffeine Consumption",
-    time_unit = "days", # Use "days" so divisor is 1
-    time_breaks = seq(0, 240, by = 60),
-    palette = distinct_palette,
-    show_pval = TRUE,
-    show_censor_marks = TRUE
-  )
-
-  # 7. Display the plot (and correct the x-axis label)
-  if (requireNamespace("ggplot2", quietly = TRUE)) {
-    km_results_female$plot +
-      ggplot2::labs(x = "Follow-up Time (Months)")
-  }
-
-  # 8. Print the at-risk table
-  print(km_results_female$table)
-
-}
+km$plot          # a ggplot of the weighted survival curves
+print(km$table)  # the number-at-risk table
 }
 }

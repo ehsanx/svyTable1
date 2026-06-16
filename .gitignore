@@ -3,7 +3,11 @@ inst/doc/
 *.Rcheck/
 *.tar.gz
 *.md
+!README.md
+!NEWS.md
+!cran-comments.md
 figure/
+Rplots.pdf
 
 # R user files
 .Rhistory
