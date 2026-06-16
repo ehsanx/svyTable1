@@ -33,8 +33,9 @@ library(knitr)
 library(survival)
 library(ggplot2)
 library(dplyr)
-library(mitools)
 library(mice)
+
+options(survey.lonely.psu = "adjust")
 ```
 
 `svykmplot()` produces Kaplan–Meier survival estimates that correctly incorporate survey weights, strata, and clusters. The function returns both a plot and a number-at-risk table. The plot supports automatic or custom colors, p-value display, and censoring indicators.
@@ -223,7 +224,10 @@ svycoxph_CE(
 
 - Multiple Imputation Case (`svycoxph_CE_mi`)
 
-```{r mi}
+The multiple-imputation pipeline relies on `mitools::imputationList()`, so this
+chunk only runs when the suggested **mitools** package is installed.
+
+```{r mi, eval = requireNamespace("mitools", quietly = TRUE)}
 data(nhanes_mortality)
 
 analytic_design <- svydesign(
@@ -276,7 +280,7 @@ imputed_data <- mice(
 
 impdata_long <- mice::complete(imputed_data, "long", include = FALSE)
 
-allImputations_main <- imputationList(split(impdata_long, impdata_long$.imp))
+allImputations_main <- mitools::imputationList(split(impdata_long, impdata_long$.imp))
 design_main <- svydesign(
   strata = ~strata,
   id = ~psu,
@@ -300,7 +304,7 @@ impdata_long_split <- survSplit(Surv(stime, status) ~ .,
                                 episode = "tgroup",
                                 id = "split_id")
 
-allImputations_split <- imputationList(split(impdata_long_split, impdata_long_split$.imp))
+allImputations_split <- mitools::imputationList(split(impdata_long_split, impdata_long_split$.imp))
 
 design_split <- svydesign(
   strata = ~strata,

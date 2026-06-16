@@ -50,52 +50,17 @@ even if precisely estimated. It is better to rely on the standard error,
 p-value, and confidence interval width for reliability assessment.
 }
 \examples{
-# Ensure required packages are loaded
-if (requireNamespace("survey", quietly = TRUE) &&
-    requireNamespace("NHANES", quietly = TRUE) &&
-    requireNamespace("dplyr", quietly = TRUE)) {
+data(nhanes_mortality, package = "svyTable1")
+nhanes_mortality$htn01 <- as.numeric(nhanes_mortality$htn == "Yes")
 
-  # 1. Prepare Data using the NHANES example
-  data(NHANESraw, package = "NHANES")
-  nhanes_adults_with_na <- NHANESraw \%>\%
-    dplyr::filter(Age >= 20) \%>\%
-    dplyr::mutate(
-      ObeseStatus = factor(ifelse(BMI >= 30, "Obese", "Not Obese"),
-                           levels = c("Not Obese", "Obese")),
-      Race1 = factor(Race1)
-    )
+design <- survey::svydesign(
+  id = ~psu, strata = ~strata, weights = ~survey_weight,
+  nest = TRUE, data = nhanes_mortality
+)
 
-  # Create a complete-case design object for the regression model
-  nhanes_complete <- nhanes_adults_with_na[complete.cases(
-    nhanes_adults_with_na[, c("ObeseStatus", "Age", "Race1")]
-  ), ]
+fit <- survey::svyglm(htn01 ~ age + sex + race,
+                      design = design, family = quasibinomial())
 
-  adult_design_complete <- survey::svydesign(
-    id = ~SDMVPSU,
-    strata = ~SDMVSTRA,
-    weights = ~WTMEC2YR,
-    nest = TRUE,
-    data = nhanes_complete
-  )
-
-  # 2. Fit a survey-weighted logistic regression model
-  fit <- survey::svyglm(
-    ObeseStatus ~ Age + Race1,
-    design = adult_design_complete,
-    family = quasibinomial()
-  )
-
-  # 3. Get the reliability diagnostics table using the new function
-  diagnostics_table <- svydiag(fit)
-
-  # Print the resulting table
-  print(diagnostics_table)
-
-  # For a publication-ready table, pipe the result to kable()
-  if (requireNamespace("knitr", quietly = TRUE)) {
-    knitr::kable(diagnostics_table,
-                 caption = "Reliability Diagnostics for NHANES Obesity Model",
-                 digits = 3)
-  }
-}
+# Per-coefficient reliability diagnostics (SE, p-value, CI width, RSE).
+svydiag(fit)
 }

@@ -23,13 +23,13 @@ This vignette demonstrates how to analyze and present interaction effects using 
 - Generating automated multi-panel reports (`reportint()`)
 - Visualizing interactions involving continuous variables (`plotint()`)
 
-We will use NHANES data to explore these functions.
+We use the bundled `nhanes_mortality` dataset (a processed NHANES cohort of diabetic adults) throughout.
 
 ## Analyzing Interaction Effects (Categorical)
 
 The `svyTable1` package includes several functions to help analyze and present interaction effects between two categorical variables in survey-weighted regression models (`svyglm` or `svycoxph`). These functions facilitate demonstrating the equivalence of different modeling approaches and calculating measures of additive interaction.
 
-### Example: Interaction between Race and Obesity on Hypertension (NHANES)
+### Example: Interaction between Sex and Insulin Use on Hypertension
 
 For two categorical variables, `svyTable1` provides functions that summarize joint, simple, and additive interaction effects from survey-weighted logistic or Cox models. These summaries help demonstrate the connection between the saturated interaction model and the equivalent joint-indicator model.
 
@@ -38,64 +38,50 @@ For two categorical variables, `svyTable1` provides functions that summarize joi
 ```{r packages, warning = FALSE, message = FALSE}
 library(svyTable1)
 library(survey)
-library(dplyr)
-library(NHANES)
 library(knitr)
-library(tidyr)
 library(emmeans)
 library(ggplot2)
+
+options(survey.lonely.psu = "adjust")
 ```
 
-The example uses NHANES data to examine whether the association between obesity and hypertension differs by race. A survey-weighted logistic model with an interaction term is fitted, and a matched joint-indicator model is created to demonstrate equivalence.
+The example examines whether the association between insulin use and hypertension differs by sex. A survey-weighted logistic model with an interaction term is fitted, and a matched joint-indicator model is created to demonstrate equivalence.
 
 ```{r data}
-data(NHANESraw)
+data(nhanes_mortality)
+nhanes_mortality$htn01 <- as.numeric(nhanes_mortality$htn == "Yes")
 
-vars_needed <- c("Age", "Race1", "BPSysAve", "BMI", "ObeseStatus", "Hypertension_130",
-                 "SDMVPSU", "SDMVSTRA", "WTMEC2YR")
-
-nhanes_adults_processed <- NHANESraw %>%
-  filter(Age >= 20) %>%
-  mutate(
-    ObeseStatus = factor(ifelse(BMI >= 30, "Obese", "Not Obese"),
-                         levels = c("Not Obese", "Obese")),
-    Hypertension_130 = factor(ifelse(BPSysAve >= 130, "Yes", "No"),
-                              levels = c("No", "Yes")),
-    Race1 = relevel(as.factor(Race1), ref = "White")
-  ) %>%
-  select(all_of(vars_needed)) %>%
-  drop_na()
-
-adult_design_binary <- svydesign(
-  id = ~SDMVPSU,
-  strata = ~SDMVSTRA,
-  weights = ~WTMEC2YR,
+design <- svydesign(
+  id = ~psu,
+  strata = ~strata,
+  weights = ~survey_weight,
   nest = TRUE,
-  data = nhanes_adults_processed
+  data = nhanes_mortality
 )
 
+# Saturated interaction model
 interaction_model_logit <- svyglm(
-  Hypertension_130 ~ Race1 * ObeseStatus + Age,
-  design = adult_design_binary,
+  htn01 ~ sex * insulin + age,
+  design = design,
   family = quasibinomial()
 )
 
-adult_design_binary <- update(adult_design_binary,
-  Race1_ObeseStatus = interaction(Race1, ObeseStatus, sep = "_", drop = TRUE)
+# Equivalent joint-indicator model
+nhanes_mortality$sex_insulin <- interaction(
+  nhanes_mortality$sex, nhanes_mortality$insulin, sep = "_"
 )
-
-adult_design_binary <- update(adult_design_binary,
-  Race1_ObeseStatus = relevel(Race1_ObeseStatus, ref = "White_Not Obese")
+design_joint <- svydesign(
+  id = ~psu, strata = ~strata, weights = ~survey_weight,
+  nest = TRUE, data = nhanes_mortality
 )
-
 joint_model_logit <- svyglm(
-  Hypertension_130 ~ Race1_ObeseStatus + Age,
-  design = adult_design_binary,
+  htn01 ~ sex_insulin + age,
+  design = design_joint,
   family = quasibinomial()
 )
 
-f1_levels <- levels(adult_design_binary$variables$Race1)
-f2_levels <- levels(adult_design_binary$variables$ObeseStatus)
+f1_levels <- c("Male", "Female")  # reference level first
+f2_levels <- c("No", "Yes")       # reference level first
 ```
 
 ## 2. Additive Interaction Measures
@@ -108,19 +94,19 @@ f2_levels <- levels(adult_design_binary$variables$ObeseStatus)
 
 - S (synergy index)
 
-These measures quantify departure from additivity on the ratio scale and help assess whether the joint effect of two exposures exceeds what would be expected from independent effects.
+These measures quantify departure from additivity. Note that for logistic models they are computed from odds ratios, which approximate risk ratios only when the outcome is rare; interpret them with care for common outcomes.
 
 ```{r add}
 all_interactions_table <- addintlist(
   model = interaction_model_logit,
-  factor1_name = "Race1",
-  factor2_name = "ObeseStatus",
+  factor1_name = "sex",
+  factor2_name = "insulin",
   measures = "all",
   digits = 3
 )
 
 knitr::kable(all_interactions_table,
-  caption = "Additive Interaction Measures (RERI, AP, S) for Race x Obesity on Hypertension",
+  caption = "Additive Interaction Measures (RERI, AP, S) for Sex x Insulin on Hypertension",
   digits = 3)
 ```
 
@@ -131,37 +117,26 @@ knitr::kable(all_interactions_table,
 ```{r joint}
 joint_effects_ratio <- jointeffects(
   interaction_model = interaction_model_logit,
-  factor1_name = "Race1",
-  factor2_name = "ObeseStatus",
+  factor1_name = "sex",
+  factor2_name = "insulin",
   scale = "ratio",
   digits = 2)
 
 knitr::kable(joint_effects_ratio,
   caption = "Joint Effects (OR Scale) Estimated from Interaction Model",
   digits = 2)
-
-joint_effects_log <- jointeffects(
-  interaction_model = interaction_model_logit,
-  factor1_name = "Race1",
-  factor2_name = "ObeseStatus",
-  scale = "log",
-  digits = 3)
-
-knitr::kable(joint_effects_log,
-  caption = "Joint Effects (Log-OR Scale) Estimated from Interaction Model",
-  digits = 3)
 ```
 
 ## 4. Simple Effects
 
-`inteffects()` provides stratum-specific effects. For example, it reports the effect of obesity within each racial group and the effect of race within each obesity category. This helps identify which group-specific comparisons drive the interaction.
+`inteffects()` provides stratum-specific effects: the effect of insulin within each sex, and the effect of sex within each insulin category. This helps identify which group-specific comparisons drive the interaction.
 
 ```{r simpeff}
 simple_effects_ratio <- inteffects(
   joint_model = joint_model_logit,
-  joint_var_name = "Race1_ObeseStatus",
-  factor1_name = "Race1",
-  factor2_name = "ObeseStatus",
+  joint_var_name = "sex_insulin",
+  factor1_name = "sex",
+  factor2_name = "insulin",
   factor1_levels = f1_levels,
   factor2_levels = f2_levels,
   level_separator = "_",
@@ -171,57 +146,25 @@ simple_effects_ratio <- inteffects(
 knitr::kable(simple_effects_ratio,
   caption = "Simple Effects (OR Scale) Estimated from Joint Model",
   digits = 2)
-
-simple_effects_log <- inteffects(
-  joint_model = joint_model_logit,
-  joint_var_name = "Race1_ObeseStatus",
-  factor1_name = "Race1",
-  factor2_name = "ObeseStatus",
-  factor1_levels = f1_levels,
-  factor2_levels = f2_levels,
-  level_separator = "_",
-  scale = "log",
-  digits = 3)
-
-knitr::kable(simple_effects_log,
-  caption = "Simple Effects (Log-OR Scale) Estimated from Joint Model",
-  digits = 3)
 ```
 
 ## 5. Automated Multi-Panel Report
 
-`reportint()` compiles the results into a structured multi-panel summary that includes:
-
-- joint effects
-- simple effects
-- additive interaction measures
-- multiplicative interaction estimates
-- model details
+`reportint()` compiles the results into a structured multi-panel summary that includes joint effects, simple effects, additive interaction measures, multiplicative interaction estimates, and model details.
 
 ```{r auto}
 interaction_report <- reportint(
   interaction_model = interaction_model_logit,
+  factor1_name = "sex",
+  factor2_name = "insulin",
   output = "list"
 )
 
 knitr::kable(interaction_report$joint_effects,
   caption = "Panel A (Joint Effects) from reportint()")
 
-knitr::kable(interaction_report$stratum_specific_effects,
-  caption = "Panel B (Simple Effects) from reportint()")
-
 knitr::kable(interaction_report$additive_interaction,
   caption = "Panel C (Additive Interaction) from reportint()")
-
-knitr::kable(interaction_report$model_details,
-  caption = "Panel D (Model Details) from reportint()")
-
-knitr::kable(interaction_report$multiplicative_scale,
-  caption = "Multiplicative Interaction (RORs) from reportint()")
-
-knitr::kable(interaction_report$effect_modification_report,
-  caption = "Publication Report: Effect Modification Analysis",
-  align = 'l')
 
 knitr::kable(interaction_report$Interaction_report,
   caption = "Publication Report: Full Interaction Analysis",
@@ -232,51 +175,28 @@ This panel format follows reporting recommendations [@knol2012recommendations].
 
 ## Visualizing Interaction Effects with `plotint`
 
-`plotint()` produces plots of predicted outcomes across values of a continuous predictor for selected levels of a continuous or categorical moderator. The function uses survey-weighted marginal estimates, supports both model and data driven moderator scales, and returns data and a plot object.
+`plotint()` produces plots of predicted outcomes across values of a continuous predictor for selected levels of a continuous or categorical moderator. The function uses survey-weighted marginal estimates, supports both model- and data-driven moderator scales, and returns the underlying plot data and a plot object.
 
-This approach is helpful when evaluating interactions between continuous variables, where reporting all numerical contrasts is often impractical.
+This approach is helpful when evaluating interactions between continuous variables, where reporting all numerical contrasts is impractical. Here we model total caloric intake as a function of an age-by-carbohydrate interaction.
 
 ```{r viz}
-data("NHANESraw")
-nhanes_clean <- NHANESraw %>%
-  filter(Age >= 20) %>%
-  mutate(
-    Gender = factor(Gender),
-    Race1 = factor(Race1)
-  ) %>%
-  select(
-    BPSysAve, Age, BMI, Gender, Race1,
-    SDMVPSU, SDMVSTRA, WTMEC2YR
-  ) %>%
-  na.omit()
-
-design_nhanes <- svydesign(
-  id = ~SDMVPSU,
-  strata = ~SDMVSTRA,
-  weights = ~WTMEC2YR,
-  nest = TRUE,
-  data = nhanes_clean
-)
-
-model_bp_interaction <- svyglm(
-  BPSysAve ~ Age * BMI + Gender + Race1,
-  design = design_nhanes,
-  family = gaussian(link = "log")
+model_cal_interaction <- svyglm(
+  cal.total ~ age * carbohyd + sex,
+  design = design,
+  family = gaussian()
 )
 
 plot_data_list <- plotint(
-  model = model_bp_interaction,
-  effect = "Age",
-  moderator = "BMI",
-  data = nhanes_clean,
+  model = model_cal_interaction,
+  effect = "age",
+  moderator = "carbohyd",
+  data = nhanes_mortality,
   mod_scale = "quantile",
   type = "response",
   show_ci = TRUE,
-  bw = FALSE,
-  pval_position = "bottom.right",
-  xlab = "Age (Years)",
-  ylab = "Predicted Geometric Mean SBP (mmHg)",
-  legend_title = "BMI (Percentiles)"
+  xlab = "Age (years)",
+  ylab = "Predicted total caloric intake (kcal)",
+  legend_title = "Carbohydrate (percentiles)"
 )
 
 head(plot_data_list$plot_data)

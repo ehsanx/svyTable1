@@ -17,6 +17,13 @@ test_that("addintlist returns the three additive-interaction measures", {
   expect_setequal(unique(al$Measure), c("RERI", "AP", "S"))
 })
 
+test_that("addintlist labels the effect-measure scale (OR for logistic)", {
+  al <- addintlist(model = st1_int_fit(), factor1_name = "sex",
+                   factor2_name = "insulin", measures = "all")
+  expect_true("Scale" %in% names(al))
+  expect_equal(unique(al$Scale), "OR (logistic)")
+})
+
 test_that("reportint(output = 'list') returns the documented panels", {
   fit <- st1_int_fit()
   suppressMessages(invisible(utils::capture.output(

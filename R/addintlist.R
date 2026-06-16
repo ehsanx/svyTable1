@@ -40,8 +40,20 @@
 #'     \item `SE`: Standard Error (Note: For S, this is SE of log(S)).
 #'     \item `CI_low`: Lower confidence interval bound.
 #'     \item `CI_upp`: Upper confidence interval bound.
+#'     \item `Scale`: The ratio scale the measures were computed on, inferred
+#'       from the model: "OR (logistic)", "HR (Cox)", "RR (log-binomial)",
+#'       "RR (Poisson)", or "ratio".
 #'   }
 #'   Returns an empty tibble if errors occur.
+#'
+#' @details
+#' RERI, AP, and the synergy index S are additive-interaction measures defined on
+#' the \emph{risk-ratio} scale. When the model reports odds ratios (logistic) or
+#' hazard ratios (Cox), these measures only approximate their risk-ratio
+#' counterparts when the outcome is rare; for a common outcome the odds ratio
+#' overstates the risk ratio and RERI/AP/S can be biased. The `Scale` column makes
+#' the operating scale explicit. To estimate risk-ratio-based interaction
+#' directly for a common outcome, fit a log-binomial or Poisson working model.
 #'
 #' @seealso \code{\link{addint}}
 #'
@@ -55,65 +67,28 @@
 #'
 #' @examples
 #' \donttest{
-#' # --- Load required libraries for the example ---
-#' # Ensure the 'addint' function is defined or loaded from the package
-#' # source("R/addint.R") # If running interactively before package build
+#' data(nhanes_mortality, package = "svyTable1")
+#' nhanes_mortality$htn01 <- as.numeric(nhanes_mortality$htn == "Yes")
 #'
-#' if (requireNamespace("survey", quietly = TRUE) &&
-#'     requireNamespace("NHANES", quietly = TRUE) &&
-#'     requireNamespace("dplyr", quietly = TRUE) &&
-#'     requireNamespace("tidyr", quietly = TRUE) &&
-#'     requireNamespace("msm", quietly = TRUE)) {
+#' design <- survey::svydesign(
+#'   id = ~psu, strata = ~strata, weights = ~survey_weight,
+#'   nest = TRUE, data = nhanes_mortality
+#' )
 #'
-#'   library(survey)
-#'   library(NHANES)
-#'   library(dplyr)
-#'   library(tidyr)
-#'   library(msm)
+#' # Saturated interaction model of sex and insulin use.
+#' interaction_model <- survey::svyglm(
+#'   htn01 ~ sex * insulin + age,
+#'   design = design, family = quasibinomial()
+#' )
 #'
-#'   # --- 1. Data Preparation (NHANES Example) ---
-#'   data(NHANESraw)
-#'
-#'   vars_needed <- c("Age", "Race1", "BPSysAve", "BMI", "ObeseStatus", "Hypertension_130",
-#'                    "SDMVPSU", "SDMVSTRA", "WTMEC2YR")
-#'
-#'   nhanes_adults_processed <- NHANESraw %>%
-#'     filter(Age >= 20) %>%
-#'     mutate(
-#'       ObeseStatus = factor(ifelse(BMI >= 30, "Obese", "Not Obese"),
-#'                            levels = c("Not Obese", "Obese")),
-#'       Hypertension_130 = factor(ifelse(BPSysAve >= 130, "Yes", "No"),
-#'                                 levels = c("No", "Yes")),
-#'       Race1 = relevel(as.factor(Race1), ref = "White")
-#'     ) %>%
-#'     select(all_of(vars_needed)) %>%
-#'     drop_na()
-#'
-#'   adult_design_binary <- svydesign(
-#'     id = ~SDMVPSU, strata = ~SDMVSTRA, weights = ~WTMEC2YR,
-#'     nest = TRUE, data = nhanes_adults_processed
-#'   )
-#'
-#'   # --- 2. Fit Interaction Term Model ---
-#'   interaction_model_logit <- svyglm(
-#'     Hypertension_130 ~ Race1 * ObeseStatus + Age,
-#'     design = adult_design_binary, family = quasibinomial()
-#'   )
-#'
-#'   # --- 3. Calculate all additive interactions ---
-#'   all_interactions_table <- addintlist(
-#'     model = interaction_model_logit,
-#'     factor1_name = "Race1",
-#'     factor2_name = "ObeseStatus",
-#'     measures = "all"
-#'   )
-#'
-#'   # Print the results table
-#'   print(all_interactions_table, n=50)
-#'
-#' } else {
-#'   print("Required packages (survey, NHANES, dplyr, tidyr, msm) not found.")
-#' }
+#' # RERI, AP and S for every factor-level combination. The Scale column flags
+#' # that these are OR-based (see Details for the rare-outcome caveat).
+#' addintlist(
+#'   model = interaction_model,
+#'   factor1_name = "sex",
+#'   factor2_name = "insulin",
+#'   measures = "all"
+#' )
 #' }
 addintlist <- function(model,
                        factor1_name,
@@ -307,10 +282,29 @@ addintlist <- function(model,
   }
 
   # --- Final structure ---
+  # The Scale column makes explicit which ratio measure RERI/AP/S were built
+  # from (OR for logistic, HR for Cox, RR for log-binomial/Poisson), since these
+  # additive-interaction measures are only RR-scale-correct when the outcome is
+  # rare (see Details).
   final_table <- final_table %>%
-    # Use .data pronoun
+    dplyr::mutate(Scale = .effect_measure_scale(model)) %>%
     dplyr::relocate("Factor1", "Level1", "Factor2", "Level2",
-                    "Measure", "Estimate", "SE", "CI_low", "CI_upp")
+                    "Measure", "Estimate", "SE", "CI_low", "CI_upp", "Scale")
 
   return(final_table)
+}
+
+# Internal: infer the ratio scale that RERI/AP/S were computed on, from the
+# fitted model's class/family. Not exported.
+.effect_measure_scale <- function(model) {
+  cl <- class(model)[1]
+  if (cl %in% c("svycoxph", "coxph")) return("HR (Cox)")
+  fam  <- tryCatch(stats::family(model)$family, error = function(e) NA_character_)
+  link <- tryCatch(stats::family(model)$link,   error = function(e) NA_character_)
+  if (!is.na(fam)) {
+    if (grepl("binomial", fam) && identical(link, "logit")) return("OR (logistic)")
+    if (grepl("binomial", fam) && identical(link, "log"))   return("RR (log-binomial)")
+    if (grepl("poisson", fam))                              return("RR (Poisson)")
+  }
+  "ratio"
 }
