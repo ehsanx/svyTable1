@@ -14,6 +14,8 @@ any additional downloads.
 ## ✨ Key Features
 
 - **Built on the `survey` package** — works with `svydesign` objects.
+- **Guided design construction** — `svydesign_build()` validates inputs and does
+  subpopulation analysis correctly (subset, not row pre-filtering).
 - **Descriptive tables** — `svytable1()` with unweighted *n* + weighted %, automatic
   missing-data handling, and optional NCHS reliability suppression.
 - **Regression diagnostics** — `svydiag()` (coefficient reliability), `svygof()`
@@ -51,6 +53,24 @@ nhanes_mortality$htn01 <- as.numeric(nhanes_mortality$htn == "Yes")
 design <- svydesign(
   id = ~psu, strata = ~strata, weights = ~survey_weight,
   nest = TRUE, data = nhanes_mortality
+)
+```
+
+`svydesign_build()` is a friendlier alternative that takes plain column names,
+validates the inputs, and does subpopulation analysis the **correct** way
+(subsetting the design instead of pre-filtering rows, which would break the
+standard errors):
+
+```r
+design <- svydesign_build(
+  data = nhanes_mortality,
+  ids = "psu", strata = "strata", weights = "survey_weight"
+)
+
+# Subpopulation (e.g. women only) done correctly:
+design_women <- svydesign_build(
+  nhanes_mortality, ids = "psu", strata = "strata",
+  weights = "survey_weight", subpop = "sex == 'Female'"
 )
 ```
 
