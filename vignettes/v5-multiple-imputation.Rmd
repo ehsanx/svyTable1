@@ -22,57 +22,60 @@ This vignette demonstrates how to use the **svypooled()** function to format poo
 
 Beyond survey data, a common analytical challenge is presenting results from models fitted to multiply imputed datasets. The **svyTable1** package provides the `svypooled()` function to address this. It takes a pooled model object (`mipo`) from **mice** and produces publication-ready regression tables.
 
-A key feature of `svypooled()` is its ability to create a fallacy-safe table. This approach displays results for the primary exposure only while listing adjustment covariates in a footnote, preventing misinterpretation of covariate p-values.
+A key feature of `svypooled()` is its ability to create a fallacy-safe table. This approach displays results for the primary exposure only while listing adjustment covariates in a footnote, preventing misinterpretation of covariate p-values [@westreich2013table].
 
 ## Example: Handling Missing Data in a Survey Design
 
-The following sections illustrate the recommended workflow. Data are taken from the NHANES example dataset supplied in the `NHANES` package.
+The following sections illustrate the recommended workflow using the bundled
+`nhanes_mortality` dataset (a processed NHANES cohort of diabetic adults).
 
 ### Data Preparation
 
 ```{r packages, warning = FALSE, message = FALSE}
 library(svyTable1)
 library(mice)
-library(dplyr)
 library(survey)
-library(NHANES)
 library(knitr)
-library(mitools)
+
+options(survey.lonely.psu = "adjust")
 ```
 
-We prepare an analytic dataset, define obesity, categorize age, define a binary smoking variable, and select variables needed for both imputation and the survey design.
+We build an analytic dataset, define a binary hypertension outcome, and -- so
+the imputation step has something to do -- induce some missingness in a
+covariate.
 
 ```{r data}
-data(NHANESraw, package = "NHANES")
-nhanes_analytic <- NHANESraw %>%
-  filter(Age >= 20 & WTMEC2YR > 0) %>% 
-  mutate(
-    Obese = factor(ifelse(BMI >= 30, "Yes", "No"), levels = c("No", "Yes")),
-    AgeCat = cut(Age, breaks = c(19, 39, 59, 80), labels = c("20-39", "40-59", "60-80")),
-    Smoke100 = factor(Smoke100, levels = c("No", "Yes"))
-  ) %>%
-  select(Obese, AgeCat, Smoke100, Education, SDMVPSU, SDMVSTRA, WTMEC2YR)
+data(nhanes_mortality)
+nhanes_mortality$htn01 <- as.numeric(nhanes_mortality$htn == "Yes")
+
+analytic <- nhanes_mortality[, c("htn01", "sex", "age", "smoking",
+                                 "psu", "strata", "survey_weight")]
+
+set.seed(123)
+analytic$age[sample(nrow(analytic), 200)] <- NA
 ```
 
 ## Pooling from Imputed Data
 
-We run `mice()`, fit a survey-weighted logistic regression model to each imputed dataset using `svyglm()`, and combine the results using `pool()`. This pooled model object is accepted directly by `svypooled()`.
+We run `mice()`, fit a survey-weighted logistic regression model to each imputed dataset using `svyglm()`, and combine the results using `pool()` (Rubin's rules). This pooled model object is accepted directly by `svypooled()`.
+
+A small number of imputations is used here only to keep the vignette fast; for a real analysis use `m >= 20` and check convergence.
 
 ```{r pool}
-imputed_data <- mice(nhanes_analytic, m = 2, maxit = 2, seed = 123, printFlag = FALSE)
+imputed_data <- mice(analytic, m = 2, maxit = 2, seed = 123, printFlag = FALSE)
 
 fit_list <- list()
-for (i in 1:imputed_data$m) {
+for (i in seq_len(imputed_data$m)) {
   completed_data <- complete(imputed_data, i)
   design_i <- svydesign(
-    id = ~SDMVPSU,
-    strata = ~SDMVSTRA,
-    weights = ~WTMEC2YR,
+    id = ~psu,
+    strata = ~strata,
+    weights = ~survey_weight,
     nest = TRUE,
     data = completed_data
   )
   fit_list[[i]] <- svyglm(
-    Obese ~ Smoke100 + AgeCat + Education,
+    htn01 ~ sex + age + smoking,
     design = design_i,
     family = quasibinomial()
   )
@@ -83,17 +86,17 @@ pooled_results <- pool(fit_list)
 
 ## Generating Tables with `svypooled()`
 
-### Fallacy-Safe Table 
+### Fallacy-Safe Table
 
 This is the recommended format [@westreich2013table]. It presents results only for the main exposure and lists adjustment variables as a single footnote.
 
 ```{r t2}
 svypooled(
  pooled_model = pooled_results,
- main_exposure = "Smoke100",
- adj_var_names = c("AgeCat", "Education"),
+ main_exposure = "sex",
+ adj_var_names = c("age", "smoking"),
  measure = "OR",
- title = "Adjusted Odds of Obesity (Fallacy-Safe)"
+ title = "Adjusted Odds of Hypertension (Fallacy-Safe)"
 )
 ```
 
@@ -104,10 +107,10 @@ This version displays results for every variable in the model. It is useful for 
 ```{r t2pool}
 svypooled(
  pooled_model = pooled_results,
- main_exposure = "Smoke100",
- adj_var_names = c("AgeCat", "Education"),
+ main_exposure = "sex",
+ adj_var_names = c("age", "smoking"),
  measure = "OR",
- title = "Adjusted Odds of Obesity (Full Table for Appendix)",
+ title = "Adjusted Odds of Hypertension (Full Table for Appendix)",
  fallacy_safe = FALSE
 )
 ```

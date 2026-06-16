@@ -9,7 +9,12 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-`{r setup} knitr::opts_chunk$set(   collapse = TRUE,   comment = "#>" )`
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
 
 This vignette covers functions in the `svyTable1` package for diagnosing
 fitted survey regression models:
@@ -23,50 +28,34 @@ These tools provide a structured way to assess whether model coefficients are pr
 
 ## 1. Data and Model Preparation
 
-The examples use complete-case NHANES data from adults aged 20 years or older. A survey-weighted logistic regression model is fitted to predict obesity. This model is used throughout the vignette to illustrate each diagnostic function.
+The examples use the bundled `nhanes_mortality` dataset (a processed NHANES
+cohort of diabetic adults). A survey-weighted logistic regression model is
+fitted to predict hypertension (`htn`). This model is used throughout the
+vignette to illustrate each diagnostic function.
 
 ```{r packages, warning = FALSE, message = FALSE}
 library(svyTable1)
 library(survey)
-library(dplyr)
-library(NHANES)
 library(knitr)
-library(tidyr)
 library(ggplot2)
 ```
 
 
-``` {r data}
-data(NHANESraw)
+```{r data}
+data(nhanes_mortality)
+nhanes_mortality$htn01 <- as.numeric(nhanes_mortality$htn == "Yes")
 
-nhanes_adults_with_na <- NHANESraw %>%
-  filter(Age >= 20) %>%
-  mutate(
-    ObeseStatus = factor(
-      ifelse(BMI >= 30, "Obese", "Not Obese"),
-      levels = c("Not Obese", "Obese")
-    )
-  )
-
-vars_for_complete_table <- c(
-  "Age", "Gender", "Race1", "BPSysAve",
-  "Pulse", "BMI", "ObeseStatus"
-)
-
-nhanes_adults_complete <- nhanes_adults_with_na %>%
-  drop_na(all_of(vars_for_complete_table))
-
-adult_design_complete <- svydesign(
-  id = ~SDMVPSU,
-  strata = ~SDMVSTRA,
-  weights = ~WTMEC2YR,
+adult_design <- svydesign(
+  id = ~psu,
+  strata = ~strata,
+  weights = ~survey_weight,
   nest = TRUE,
-  data = nhanes_adults_complete
+  data = nhanes_mortality
 )
 
-fit_obesity <- svyglm(
-  ObeseStatus ~ Age + Gender + Race1,
-  design = adult_design_complete,
+fit_htn <- svyglm(
+  htn01 ~ age + sex + smoking,
+  design = adult_design,
   family = quasibinomial()
 )
 ```
@@ -76,12 +65,12 @@ fit_obesity <- svyglm(
 `svydiag()` produces diagnostics for regression coefficients, including
 p-values, precision measures, and relative standard errors.
 
-``` {r diag}
-diagnostics_table <- svydiag(fit_obesity)
+```{r diag}
+diagnostics_table <- svydiag(fit_htn)
 
 knitr::kable(
   diagnostics_table,
-  caption = "Reliability Diagnostics for NHANES Obesity Model",
+  caption = "Reliability Diagnostics for the Hypertension Model",
   digits = 3
 )
 ```
@@ -98,48 +87,48 @@ knitr::kable(
 
 `svygof()` implements the Archer and Lemeshow goodness of fit procedure for complex survey logistic regression [@archer2006goodness]. This test adapts the Hosmer and Lemeshow approach to designs with weights, strata, and clustering.
 
-The function groups respondents by predicted risk and compares observed and expected outcomes while incorporating survey weights. A small p-value provides evidence that predicted risks diverge from observed risks in one or more groups.
+The function groups respondents by predicted risk and compares observed and expected outcomes while incorporating survey weights. A small p-value provides evidence that predicted risks diverge from observed risks in one or more groups. Note that `svygof()` expects a standard `svydesign` object (not a replicate-weights design).
 
 This test helps identify lack of fit that may result from omitted interactions or nonlinearities in the model.
 
-``` {r gof}
-gof_results <- svygof(fit_obesity, adult_design_complete)
+```{r gof}
+gof_results <- svygof(fit_htn, adult_design)
 
 knitr::kable(
   gof_results,
-  caption = "Archer-Lemeshow Goodness-of-Fit Test for Obesity Model"
+  caption = "Archer-Lemeshow Goodness-of-Fit Test for the Hypertension Model"
 )
 ```
 
-A significant p-value indicates poor model fit across predicted risk
-groups.
+A non-significant p-value is consistent with adequate fit across predicted
+risk groups; it does not prove the model is correctly specified.
 
 ## 4. Model Performance (`svyAUC()`)
 
-`svyAUC()` estimates the area under the ROC curve using replicate-weight designs. This produces an AUC estimate and confidence interval that appropriately reflect survey sampling.
+`svyAUC()` estimates the area under the ROC curve using replicate-weight designs. This produces an AUC estimate and confidence interval that appropriately reflect survey sampling. The confidence interval is built on the logit scale, so it always stays within `[0, 1]`.
 
-The function also returns data for constructing ROC curves. A plot of the ROC curve, along with the AUC estimate, demonstrates how well the model discriminates between obese and non-obese respondents.
+The function also returns data for constructing ROC curves. A plot of the ROC curve, along with the AUC estimate, demonstrates how well the model discriminates between respondents with and without hypertension.
 
 A value close to 0.5 indicates little discriminatory value, while higher values indicate stronger predictive performance.
 
-``` {r auc}
-rep_design <- as.svrepdesign(adult_design_complete)
+```{r auc}
+rep_design <- as.svrepdesign(adult_design)
 
-fit_obesity_rep <- svyglm(
-  ObeseStatus ~ Age + Gender + Race1,
+fit_htn_rep <- svyglm(
+  htn01 ~ age + sex + smoking,
   design = rep_design,
   family = quasibinomial()
 )
 
-auc_results_list <- svyAUC(fit_obesity_rep, rep_design, plot = TRUE)
+auc_results_list <- svyAUC(fit_htn_rep, rep_design, plot = TRUE)
 
 knitr::kable(
   auc_results_list$summary,
-  caption = "Design-Correct AUC for Obesity Model"
+  caption = "Design-Correct AUC for the Hypertension Model"
 )
 
 ggplot(auc_results_list$roc_data, aes(x = FPR, y = TPR)) +
-  geom_line(linewidth = 1) +  # Changed 'size' to 'linewidth'
+  geom_line(linewidth = 1) +
   geom_abline(linetype = "dashed") +
   labs(
     title = "Survey-Weighted ROC Curve",

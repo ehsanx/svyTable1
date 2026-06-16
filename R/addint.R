@@ -22,6 +22,15 @@
 #'
 #' Confidence intervals for S are calculated on the log scale and then exponentiated.
 #'
+#' \strong{Scale caveat:} these measures are defined on the risk-ratio scale.
+#' When the model supplies odds ratios (logistic) or hazard ratios (Cox), RERI,
+#' AP, and S only approximate their risk-ratio counterparts if the outcome is
+#' rare; for a common outcome the odds ratio overstates the risk ratio and the
+#' measures can be biased. To target risk ratios directly, fit a log-binomial or
+#' Poisson working model (see VanderWeele and Knol (2014)
+#' <doi:10.1515/em-2013-0005>). The delta-method Wald intervals here are
+#' symmetric and approximate.
+#'
 #' @param model A fitted model object (e.g., `svycoxph`, `svyglm`).
 #' @param type Character string: `"joint"` if using a combined categorical variable,
 #'   `"interaction"` if using main effects and a product term.
