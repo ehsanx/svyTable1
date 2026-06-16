@@ -69,70 +69,27 @@ It takes a **single pre-fitted model** as input and works for `glm`,
 This function requires the 'svyTable1' and 'Publish' packages.
 }
 \examples{
-\dontrun{
-# --- Load required libraries for the example ---
-if (requireNamespace("svyTable1", quietly = TRUE) &&
-    requireNamespace("Publish", quietly = TRUE) &&
-    requireNamespace("survey", quietly = TRUE) &&
-    requireNamespace("NHANES", quietly = TRUE) &&
-    requireNamespace("dplyr", quietly = TRUE) &&
-    requireNamespace("tidyr", quietly = TRUE) &&
-    requireNamespace("broom", quietly = TRUE)) {
+\donttest{
+data(nhanes_mortality, package = "svyTable1")
+nhanes_mortality$htn01 <- as.numeric(nhanes_mortality$htn == "Yes")
 
-  library(svyTable1)
-  library(Publish)
-  library(survey)
-  library(NHANES)
-  library(dplyr)
-  library(tidyr)
-  library(broom)
+design <- survey::svydesign(
+  id = ~psu, strata = ~strata, weights = ~survey_weight,
+  nest = TRUE, data = nhanes_mortality
+)
 
-  # --- 1. Data Preparation (NHANES Example) ---
-  data(NHANESraw)
+# Fit a model with a two-factor interaction (sex x insulin).
+interaction_fit <- survey::svyglm(
+  htn01 ~ sex * insulin + age,
+  design = design, family = quasibinomial()
+)
 
-  vars_needed <- c("Age", "Race1", "BPSysAve", "BMI", "ObeseStatus", "Hypertension_130",
-                   "SDMVPSU", "SDMVSTRA", "WTMEC2YR")
-
-  nhanes_adults_processed <- NHANESraw \%>\%
-    dplyr::filter(Age >= 20) \%>\%
-    dplyr::mutate(
-      ObeseStatus = factor(ifelse(BMI >= 30, "Obese", "Not Obese"),
-                           levels = c("Not Obese", "Obese")),
-      Hypertension_130 = factor(ifelse(BPSysAve >= 130, "Yes", "No"),
-                                  levels = c("No", "Yes")),
-      Race1 = relevel(as.factor(Race1), ref = "White")
-    ) \%>\%
-    dplyr::select(dplyr::all_of(vars_needed)) \%>\%
-    tidyr::drop_na()
-
-  adult_design_binary <- svydesign(
-    id = ~SDMVPSU, strata = ~SDMVSTRA, weights = ~WTMEC2YR,
-    nest = TRUE, data = nhanes_adults_processed
-  )
-
-  # --- 2. FIT ONLY THE INTERACTION MODEL ---
-
-  interaction_model_fit <- svyglm(
-    Hypertension_130 ~ Race1 * ObeseStatus + Age,
-    design = adult_design_binary, family = quasibinomial()
-  )
-
-  # --- 3. Run the wrapper function ---
-
-  report_list <- reportint(
-    interaction_model = interaction_model_fit
-  )
-
-  # You can then print the individual panel tables:
-  # print(report_list$joint_effects)
-  # print(report_list$stratum_specific_effects)
-
-  # --- OR ---
-
-  # Print the single, publication-ready summary tables:
-  # print(report_list$effect_modification_report)
-  # print(report_list$Interaction_report)
-
-}
+# The default output = "list" returns the panel data frames (no rendering).
+report <- reportint(interaction_fit,
+                    factor1_name = "sex", factor2_name = "insulin",
+                    output = "list")
+report$joint_effects
+report$additive_interaction
+report$Interaction_report
 }
 }

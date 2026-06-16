@@ -57,71 +57,28 @@
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' # --- Load required libraries for the example ---
-#' if (requireNamespace("svyTable1", quietly = TRUE) &&
-#'     requireNamespace("Publish", quietly = TRUE) &&
-#'     requireNamespace("survey", quietly = TRUE) &&
-#'     requireNamespace("NHANES", quietly = TRUE) &&
-#'     requireNamespace("dplyr", quietly = TRUE) &&
-#'     requireNamespace("tidyr", quietly = TRUE) &&
-#'     requireNamespace("broom", quietly = TRUE)) {
+#' \donttest{
+#' data(nhanes_mortality, package = "svyTable1")
+#' nhanes_mortality$htn01 <- as.numeric(nhanes_mortality$htn == "Yes")
 #'
-#'   library(svyTable1)
-#'   library(Publish)
-#'   library(survey)
-#'   library(NHANES)
-#'   library(dplyr)
-#'   library(tidyr)
-#'   library(broom)
+#' design <- survey::svydesign(
+#'   id = ~psu, strata = ~strata, weights = ~survey_weight,
+#'   nest = TRUE, data = nhanes_mortality
+#' )
 #'
-#'   # --- 1. Data Preparation (NHANES Example) ---
-#'   data(NHANESraw)
+#' # Fit a model with a two-factor interaction (sex x insulin).
+#' interaction_fit <- survey::svyglm(
+#'   htn01 ~ sex * insulin + age,
+#'   design = design, family = quasibinomial()
+#' )
 #'
-#'   vars_needed <- c("Age", "Race1", "BPSysAve", "BMI", "ObeseStatus", "Hypertension_130",
-#'                    "SDMVPSU", "SDMVSTRA", "WTMEC2YR")
-#'
-#'   nhanes_adults_processed <- NHANESraw %>%
-#'     dplyr::filter(Age >= 20) %>%
-#'     dplyr::mutate(
-#'       ObeseStatus = factor(ifelse(BMI >= 30, "Obese", "Not Obese"),
-#'                            levels = c("Not Obese", "Obese")),
-#'       Hypertension_130 = factor(ifelse(BPSysAve >= 130, "Yes", "No"),
-#'                                   levels = c("No", "Yes")),
-#'       Race1 = relevel(as.factor(Race1), ref = "White")
-#'     ) %>%
-#'     dplyr::select(dplyr::all_of(vars_needed)) %>%
-#'     tidyr::drop_na()
-#'
-#'   adult_design_binary <- svydesign(
-#'     id = ~SDMVPSU, strata = ~SDMVSTRA, weights = ~WTMEC2YR,
-#'     nest = TRUE, data = nhanes_adults_processed
-#'   )
-#'
-#'   # --- 2. FIT ONLY THE INTERACTION MODEL ---
-#'
-#'   interaction_model_fit <- svyglm(
-#'     Hypertension_130 ~ Race1 * ObeseStatus + Age,
-#'     design = adult_design_binary, family = quasibinomial()
-#'   )
-#'
-#'   # --- 3. Run the wrapper function ---
-#'
-#'   report_list <- reportint(
-#'     interaction_model = interaction_model_fit
-#'   )
-#'
-#'   # You can then print the individual panel tables:
-#'   # print(report_list$joint_effects)
-#'   # print(report_list$stratum_specific_effects)
-#'
-#'   # --- OR ---
-#'
-#'   # Print the single, publication-ready summary tables:
-#'   # print(report_list$effect_modification_report)
-#'   # print(report_list$Interaction_report)
-#'
-#' }
+#' # The default output = "list" returns the panel data frames (no rendering).
+#' report <- reportint(interaction_fit,
+#'                     factor1_name = "sex", factor2_name = "insulin",
+#'                     output = "list")
+#' report$joint_effects
+#' report$additive_interaction
+#' report$Interaction_report
 #' }
 reportint <- function(interaction_model,
                       factor1_name = NULL,
@@ -163,13 +120,13 @@ reportint <- function(interaction_model,
 
   # --- For "viewer" or "rmd", we must render the Rmd template ---
 
-  # Find the Rmd template within your package
-  # *** YOU MUST REPLACE "YourPackageName" WITH YOUR ACTUAL PACKAGE NAME ***
+  # Find the Rmd template that ships with the installed package.
   template_path <- system.file("rmd/interaction_report.Rmd", package = "svyTable1")
 
   if (template_path == "") {
-    stop("Could not find 'interaction_report.Rmd' in 'inst/rmd/'.\n",
-         "Make sure the file exists and 'YourPackageName' is correct.", call. = FALSE)
+    stop("Could not find the interaction report template ",
+         "(inst/rmd/interaction_report.Rmd) in the installed 'svyTable1' package. ",
+         "Try reinstalling the package, or use output = \"list\".", call. = FALSE)
   }
 
   # --- Create render parameters ---
@@ -348,7 +305,7 @@ reportint <- function(interaction_model,
     )
 
   panelA_table <- panelA_data_ratio %>%
-    dplyr::left_join(dplyr::select(panelA_data_log, .data$Level1, .data$Level2, .data$p_value), by = c("Level1", "Level2")) %>%
+    dplyr::left_join(dplyr::select(panelA_data_log, "Level1", "Level2", "p_value"), by = c("Level1", "Level2")) %>%
     dplyr::mutate(
       OR_str = sprintf(paste0("%.", digits_ratio, "f"), .data$Estimate),
       CI_str = format_ci(.data$CI.low, .data$CI.upp, digits = digits_ratio),
@@ -357,11 +314,11 @@ reportint <- function(interaction_model,
       CI_str = dplyr::if_else(.data$Level1 == ref_level1 & .data$Level2 == ref_level2, "(Reference)", .data$CI_str)
     ) %>%
     dplyr::select(
-      !!rlang::sym(factor1_name) := .data$Level1,
-      !!rlang::sym(factor2_name) := .data$Level2,
-      OR = .data$OR_str,
-      `95% CI` = .data$CI_str,
-      p = .data$p_str
+      !!rlang::sym(factor1_name) := "Level1",
+      !!rlang::sym(factor2_name) := "Level2",
+      OR = "OR_str",
+      `95% CI` = "CI_str",
+      p = "p_str"
     )
 
   # --- 6. Generate & Format Panel B ---
@@ -369,7 +326,11 @@ reportint <- function(interaction_model,
 
   ci_format_str <- "(%s, %s)"
 
-  pub_obj <- Publish::publish(interaction_model, ci.format = ci_format_str, digits = digits_ratio)
+  # Publish::publish() emits a deprecation note about its internal 'robust'
+  # argument (from emmeans); it is unrelated to our call, so silence it.
+  pub_obj <- suppressWarnings(
+    Publish::publish(interaction_model, ci.format = ci_format_str, digits = digits_ratio)
+  )
   panelB_table_raw <- pub_obj$regressionTable
 
   table_names <- names(panelB_table_raw)
@@ -390,12 +351,12 @@ reportint <- function(interaction_model,
   panelB_table <- panelB_table_raw %>%
     dplyr::filter(grepl(factor1_name, .data$Variable, ignore.case = TRUE) | grepl(factor2_name, .data$Variable, ignore.case = TRUE)) %>%
     dplyr::rename(
-      Comparison = .data$Variable,
+      Comparison = "Variable",
       Estimate = !!rlang::sym(estimate_col_name),
-      `95% CI` = .data$CI.95,
-      p = .data$`p-value`
+      `95% CI` = "CI.95",
+      p = "p-value"
     ) %>%
-    dplyr::select(.data$Comparison, .data$Estimate, .data$`95% CI`, .data$p)
+    dplyr::select("Comparison", "Estimate", "95% CI", "p")
 
 
   # --- 7. Generate & Format Panel C ---
@@ -406,7 +367,8 @@ reportint <- function(interaction_model,
     factor2_name = factor2_name,
     measures = "all",
     conf.level = conf.level,
-    digits = digits_additive
+    digits = digits_additive,
+    verbose = verbose
   )
 
   panelC_table <- panelC_data_raw %>%
@@ -415,21 +377,21 @@ reportint <- function(interaction_model,
       Est_str = sprintf(paste0("%.", digits_additive, "f"), .data$Estimate),
       CI_str = format_ci(.data$CI_low, .data$CI_upp, digits = digits_additive)
     ) %>%
-    dplyr::select(.data$Level1, .data$Level2, .data$Measure, .data$Est_str, .data$CI_str) %>%
+    dplyr::select("Level1", "Level2", "Measure", "Est_str", "CI_str") %>%
     tidyr::pivot_wider(
-      names_from = .data$Measure,
-      values_from = c(.data$Est_str, .data$CI_str),
+      names_from = "Measure",
+      values_from = c("Est_str", "CI_str"),
       names_glue = "{Measure}_{.value}"
     ) %>%
     dplyr::select(
-      !!rlang::sym(factor1_name) := .data$Level1,
-      !!rlang::sym(factor2_name) := .data$Level2,
-      RERI = .data$RERI_Est_str,
-      `RERI 95% CI` = .data$RERI_CI_str,
-      AP = .data$AP_Est_str,
-      `AP 95% CI` = .data$AP_CI_str,
-      S = .data$S_Est_str,
-      `S 95% CI` = .data$S_CI_str
+      !!rlang::sym(factor1_name) := "Level1",
+      !!rlang::sym(factor2_name) := "Level2",
+      RERI = "RERI_Est_str",
+      `RERI 95% CI` = "RERI_CI_str",
+      AP = "AP_Est_str",
+      `AP 95% CI` = "AP_CI_str",
+      S = "S_Est_str",
+      `S 95% CI` = "S_CI_str"
     )
 
   # --- 8. Generate Multiplicative Interaction ---
@@ -457,10 +419,10 @@ reportint <- function(interaction_model,
       p_str = format_p_value(.data$p.value)
     ) %>%
     dplyr::select(
-      InteractionTerm = .data$term,
-      ROR = .data$ROR_str,
-      `95% CI` = .data$CI_str,
-      p = .data$p_str
+      InteractionTerm = "term",
+      ROR = "ROR_str",
+      `95% CI` = "CI_str",
+      p = "p_str"
     )
 
 
@@ -582,27 +544,27 @@ reportint <- function(interaction_model,
     ) %>%
     dplyr::select(
       "Characteristic",
-      Estimate = .data$OR,
-      `95% CI` = .data$`95% CI`,
-      `p-value` = .data$p
+      Estimate = "OR",
+      `95% CI` = "95% CI",
+      `p-value` = "p"
     )
 
   # 2. Format Panel B
   panelB_fmt <- panelB %>%
     dplyr::select(
-      Characteristic = .data$Comparison,
-      Estimate = .data$Estimate,
-      `95% CI` = .data$`95% CI`,
-      `p-value` = .data$p
+      Characteristic = "Comparison",
+      Estimate = "Estimate",
+      `95% CI` = "95% CI",
+      `p-value` = "p"
     )
 
   # 3. Format Panel M (Multiplicative)
   panelM_fmt <- panelM %>%
     dplyr::select(
-      Characteristic = .data$InteractionTerm,
-      Estimate = .data$ROR,
-      `95% CI` = .data$`95% CI`,
-      `p-value` = .data$p
+      Characteristic = "InteractionTerm",
+      Estimate = "ROR",
+      `95% CI` = "95% CI",
+      `p-value` = "p"
     )
 
   # 4. Format Panel C (Additive)
@@ -612,12 +574,12 @@ reportint <- function(interaction_model,
     ) %>%
     dplyr::select(
       "Characteristic",
-      RERI = .data$RERI,
-      `RERI 95% CI` = .data$`RERI 95% CI`,
-      AP = .data$AP,
-      `AP 95% CI` = .data$`AP 95% CI`,
-      S = .data$S,
-      `S 95% CI` = .data$`S 95% CI`
+      RERI = "RERI",
+      `RERI 95% CI` = "RERI 95% CI",
+      AP = "AP",
+      `AP 95% CI` = "AP 95% CI",
+      S = "S",
+      `S 95% CI` = "S 95% CI"
     )
 
   # 5. Create Header Rows
@@ -649,7 +611,7 @@ reportint <- function(interaction_model,
   if(estimate_col_name == "Coefficient") est_col_name_final <- "Estimate"
 
   final_table <- final_table %>%
-    dplyr::rename(!!est_col_name_final := .data$Estimate)
+    dplyr::rename(!!est_col_name_final := "Estimate")
 
   return(final_table)
 }

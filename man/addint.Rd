@@ -61,97 +61,32 @@ Confidence intervals for S are calculated on the log scale and then exponentiate
 }
 \examples{
 \donttest{
-# --- Load required libraries for the example ---
-if (requireNamespace("survey", quietly = TRUE) &&
-    requireNamespace("NHANES", quietly = TRUE) &&
-    requireNamespace("dplyr", quietly = TRUE) &&
-    requireNamespace("tidyr", quietly = TRUE) &&
-    requireNamespace("msm", quietly = TRUE)) {
+data(nhanes_mortality, package = "svyTable1")
+nhanes_mortality$htn01 <- as.numeric(nhanes_mortality$htn == "Yes")
 
-  library(survey)
-  library(NHANES)
-  library(dplyr)
-  library(tidyr)
-  library(msm)
+design <- survey::svydesign(
+  id = ~psu, strata = ~strata, weights = ~survey_weight,
+  nest = TRUE, data = nhanes_mortality
+)
 
-  # --- 1. Data Preparation (NHANES Example) ---
-  data(NHANESraw)
+# Interaction-term model: additive interaction of sex and insulin use.
+fit <- survey::svyglm(htn01 ~ sex * insulin + age,
+                      design = design, family = quasibinomial())
 
-  vars_needed <- c("Age", "Race1", "BPSysAve", "BMI", "ObeseStatus", "Hypertension_130",
-                   "SDMVPSU", "SDMVSTRA", "WTMEC2YR")
+# Coefficient names must match names(coef(fit)) exactly.
+addint(
+  model = fit,
+  type = "interaction",
+  coef_names = list(
+    exp1_coef  = "sexFemale",
+    exp2_coef  = "insulinYes",
+    inter_coef = "sexFemale:insulinYes"
+  ),
+  measures = "all"
+)
 
-  nhanes_adults_processed <- NHANESraw \%>\%
-    filter(Age >= 20) \%>\%
-    mutate(
-      ObeseStatus = factor(ifelse(BMI >= 30, "Obese", "Not Obese"),
-                           levels = c("Not Obese", "Obese")),
-      Hypertension_130 = factor(ifelse(BPSysAve >= 130, "Yes", "No"),
-                                levels = c("No", "Yes")),
-      Race1 = relevel(as.factor(Race1), ref = "White")
-    ) \%>\%
-    select(all_of(vars_needed)) \%>\%
-    drop_na()
-
-  adult_design_binary <- svydesign(
-    id = ~SDMVPSU, strata = ~SDMVSTRA, weights = ~WTMEC2YR,
-    nest = TRUE, data = nhanes_adults_processed
-  )
-
-  # --- 2a. Fit Joint Variable Model ---
-  adult_design_binary <- update(adult_design_binary,
-    Race1_ObeseStatus = interaction(Race1, ObeseStatus, sep = "_", drop = TRUE)
-  )
-  adult_design_binary <- update(adult_design_binary,
-    Race1_ObeseStatus = relevel(Race1_ObeseStatus, ref = "White_Not Obese")
-  )
-
-  joint_model_logit <- svyglm(
-    Hypertension_130 ~ Race1_ObeseStatus + Age,
-    design = adult_design_binary, family = quasibinomial()
-  )
-
-  # --- 2b. Fit Interaction Term Model ---
-  interaction_model_logit <- svyglm(
-    Hypertension_130 ~ Race1 * ObeseStatus + Age,
-    design = adult_design_binary, family = quasibinomial()
-  )
-
-  # --- 3. Calculate Additive Interaction (Black vs White * Obese vs Not Obese) ---
-
-  # --- Using the Joint Model ---
-  joint_coef_names_black_obese <- list(
-    exp1_level = "Race1_ObeseStatusBlack_Not Obese", # A=1, B=0
-    exp2_level = "Race1_ObeseStatusWhite_Obese",    # A=0, B=1
-    both_levels = "Race1_ObeseStatusBlack_Obese"     # A=1, B=1
-  )
-
-  results_joint <- addint(
-    model = joint_model_logit,
-    type = "joint",
-    coef_names = joint_coef_names_black_obese,
-    measures = "all"
-  )
-  print("--- Results from Joint Model (Black vs Obese Interaction) ---")
-  print(results_joint)
-
-  # --- Using the Interaction Model ---
-  interaction_coef_names_black_obese <- list(
-    exp1_coef = "Race1Black",           # Main effect A
-    exp2_coef = "ObeseStatusObese",     # Main effect B
-    inter_coef = "Race1Black:ObeseStatusObese" # Interaction A:B
-  )
-
-  results_interact <- addint(
-    model = interaction_model_logit,
-    type = "interaction",
-    coef_names = interaction_coef_names_black_obese,
-    measures = "all"
-  )
-  print("--- Results from Interaction Model (Black vs Obese Interaction) ---")
-  print(results_interact)
-
-} else {
-  print("Required packages (survey, NHANES, dplyr, tidyr, msm) not found.")
-}
+# RERI/AP/S can also be computed from a joint-variable model with
+# type = "joint" (see the 'coef_names' argument). For logistic models these
+# use odds ratios, which approximate risk ratios only when the outcome is rare.
 }
 }

@@ -19,8 +19,10 @@
 #'   fitted probabilities. Defaults to 10 (deciles).
 #'
 #' @return
-#' A `data.frame` containing the F-statistic, the numerator (df1) and
-#' denominator (df2) degrees of freedom, and the p-value for the test.
+#' A one-row `data.frame` with columns `F_statistic`, `df1` (numerator df),
+#' `df2` (denominator df) and `p_value` for the Archer-Lemeshow design-based
+#' goodness-of-fit test. A non-significant p-value (e.g. p > 0.05) is consistent
+#' with adequate fit; it does not prove the model is correctly specified.
 #'
 #' @source
 #' The implementation is a formalized function based on the script and discussion
@@ -32,86 +34,73 @@
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' # Ensure required packages are loaded
-#' if (requireNamespace("survey", quietly = TRUE) &&
-#'     requireNamespace("NHANES", quietly = TRUE) &&
-#'     requireNamespace("dplyr", quietly = TRUE)) {
+#' \donttest{
+#' data(nhanes_mortality, package = "svyTable1")
+#' nhanes_mortality$htn01 <- as.numeric(nhanes_mortality$htn == "Yes")
 #'
-#'   # 1. Prepare Data
-#'   data(NHANESraw, package = "NHANES")
-#'   nhanes_data <- NHANESraw %>%
-#'     dplyr::filter(Age >= 20) %>%
-#'     dplyr::mutate(ObeseStatus = factor(ifelse(BMI >= 30, "Obese", "Not Obese"),
-#'                                        levels = c("Not Obese", "Obese"))) %>%
-#'     dplyr::filter(complete.cases(ObeseStatus, Age, Gender, Race1,
-#'                                  WTMEC2YR, SDMVPSU, SDMVSTRA))
+#' # The Archer-Lemeshow test uses a standard (non-replicate) survey design.
+#' design <- survey::svydesign(
+#'   id = ~psu, strata = ~strata, weights = ~survey_weight,
+#'   nest = TRUE, data = nhanes_mortality
+#' )
 #'
-#'   # 2. Create a replicate design object
-#'   std_design <- survey::svydesign(
-#'     ids = ~SDMVPSU,
-#'     strata = ~SDMVSTRA,
-#'     weights = ~WTMEC2YR,
-#'     nest = TRUE,
-#'     data = nhanes_data
-#'   )
-#'   rep_design <- survey::as.svrepdesign(std_design)
+#' fit <- survey::svyglm(htn01 ~ age + sex + smoking,
+#'                       design = design, family = quasibinomial())
 #'
-#'   # 3. Fit a survey logistic regression model using the replicate design
-#'   fit_obesity_rep <- survey::svyglm(
-#'     ObeseStatus ~ Age + Gender + Race1,
-#'     design = rep_design,
-#'     family = quasibinomial()
-#'   )
-#'
-#'   # 4. Calculate the design-correct AUC
-#'   auc_results <- svyAUC(fit_obesity_rep, rep_design)
-#'   print(auc_results)
-#' }
+#' # A non-significant p-value is consistent with adequate fit (it does not
+#' # prove the model is correctly specified).
+#' svygof(fit, design, G = 10)
 #' }
 svygof <- function(fit, design, G = 10) {
 
-  # Get residuals and fitted values from the model
+  if (!inherits(fit, "svyglm")) {
+    stop("`fit` must be a survey logistic model of class 'svyglm'.", call. = FALSE)
+  }
+  if (!inherits(design, c("survey.design", "svyrep.design"))) {
+    stop("`design` must be a survey design ('survey.design' or 'svyrep.design').",
+         call. = FALSE)
+  }
+
+  # Get response residuals and fitted probabilities from the model.
   resids <- stats::residuals(fit, type = "response")
   fitted_vals <- stats::fitted(fit)
 
-  # Create a data frame of model results, using row names to link back
-  model_data <- data.frame(
-    .id = names(resids),
-    r = resids,
-    f = fitted_vals
-  )
+  # Align residuals/fitted to ALL rows of the design by row name, so that the
+  # decile grouping can be attached to the *existing* design object. Rows that
+  # were dropped while fitting (e.g. missing covariates) are left as NA and are
+  # excluded by na.omit when the grouped model is fitted.
+  rn <- rownames(design$variables)
+  n  <- length(rn)
+  r_full <- rep(NA_real_, n)
+  f_full <- rep(NA_real_, n)
+  r_full[match(names(resids), rn)] <- as.numeric(resids)
+  f_full[match(names(fitted_vals), rn)] <- as.numeric(fitted_vals)
 
-  # Use the data directly from the design object, which is the most reliable source
-  data_with_res <- design$variables
-  data_with_res$.id <- rownames(data_with_res)
-  data_with_res <- merge(data_with_res, model_data, by = ".id", all.x = TRUE)
-
-  # Create G groups based on fitted values
-  breaks <- stats::quantile(data_with_res$f, probs = seq(0, 1, 1 / G), na.rm = TRUE)
+  # Create G groups based on quantiles of the fitted probabilities.
+  breaks <- stats::quantile(f_full, probs = seq(0, 1, 1 / G), na.rm = TRUE)
   unique_breaks <- unique(breaks)
-  data_with_res$g <- cut(data_with_res$f, breaks = unique_breaks, include.lowest = TRUE)
+  if (length(unique_breaks) < 3) {
+    stop("Too few distinct fitted-probability groups for the goodness-of-fit ",
+         "test (the model's predictions are nearly constant). Try a smaller G.",
+         call. = FALSE)
+  }
+  g_full <- cut(f_full, breaks = unique_breaks, include.lowest = TRUE)
 
-  # Rebuild the design object using its internal components
-  new_design <- survey::svydesign(
-    ids = design$cluster,
-    strata = design$strata,
-    weights = design$weights,
-    data = data_with_res,
-    nest = isTRUE(design$nest)
-  )
+  # Attach the residual and grouping variables to the EXISTING design via
+  # survey::update(). Unlike rebuilding the design from $cluster/$strata/$weights,
+  # this preserves finite population corrections, calibration, and replicate
+  # weights, so the Archer-Lemeshow test remains design-correct -- and it works
+  # for both 'survey.design' and 'svyrep.design' objects.
+  design <- stats::update(design, .gof_resid = r_full, .gof_group = g_full)
 
-  # Run the test
-  decile_model <- survey::svyglm(r ~ g, design = new_design, na.action = na.omit)
-  test_result <- survey::regTermTest(decile_model, ~g)
+  decile_model <- survey::svyglm(.gof_resid ~ .gof_group, design = design,
+                                 na.action = stats::na.omit)
+  test_result <- survey::regTermTest(decile_model, ~.gof_group)
 
-  # Return a tidy data frame
-  output <- data.frame(
-    F_statistic = test_result$Ftest[1],
+  data.frame(
+    F_statistic = as.numeric(test_result$Ftest[1]),
     df1 = test_result$df,
     df2 = test_result$ddf,
-    p_value = test_result$p
+    p_value = as.numeric(test_result$p)
   )
-
-  return(output)
 }

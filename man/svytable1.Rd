@@ -51,8 +51,18 @@ reliability metrics. This includes the RSE and specific TRUE/FALSE columns
 (e.g., `fail_n_30`, `fail_eff_n_30`) for each suppression rule. Defaults to FALSE.}
 }
 \value{
-If `return_metrics` is FALSE (default), returns a data.frame. If TRUE,
-  returns a list with two elements: `formatted_table` and `reliability_metrics`.
+If `return_metrics` is FALSE (default), a `data.frame` (the formatted
+  Table 1). Its first two columns are `Variable` and `Level`; the remaining
+  columns are `Overall` plus one column per level of `strata_var` (including a
+  `Missing` column when the stratifier has NAs). Cells hold unweighted counts
+  with weighted percentages for categorical variables and "mean (SD)" for
+  numeric variables; suppressed cells (when `reliability_checks = TRUE`) are
+  shown as `"*"`. If `return_metrics` is TRUE, a list with two elements:
+  `formatted_table` (the data.frame above) and `reliability_metrics` (a
+  data.frame with one row per evaluated cell giving `n`, `df`, `deff`,
+  `effective_n`, the confidence-interval bounds, `rse`, the logical
+  suppression flags `fail_n_30`/`fail_eff_n_30`/`fail_df_8`/`fail_ciw_30`/
+  `fail_rciw_130`/`fail_rse_30`, and overall `suppressed`).
 }
 \description{
 Generates a "Table 1" of descriptive statistics for complex survey data,

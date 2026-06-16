@@ -3,6 +3,20 @@
 \name{\%>\%}
 \alias{\%>\%}
 \title{Pipe operator}
+\usage{
+lhs \%>\% rhs
+}
+\arguments{
+\item{lhs}{A value to be piped into the right-hand side.}
+
+\item{rhs}{A function call using the magrittr semantics.}
+}
+\value{
+The result of calling the right-hand side with the left-hand side as
+  its first argument: \code{lhs \%>\% rhs} is equivalent to \code{rhs(lhs)}.
+  Used to chain a sequence of operations; the returned value and its class are
+  determined by the right-hand side expression.
+}
 \description{
 See \code{magrittr::\link[magrittr]{\%>\%}} for details.
 }

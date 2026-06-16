@@ -34,8 +34,12 @@ returns a table showing only the main exposure and lists covariates in a
 footnote. If `FALSE`, it returns a full table with all model terms.}
 }
 \value{
-An HTML table object of class `kableExtra`. This object can be
-  printed directly in R Markdown documents or saved.
+A `kable` object (class `c("kableExtra", "knitr_kable")`): a character
+  vector of HTML with attributes, ready to print in an R Markdown report. In
+  "fallacy-safe" mode it contains one row per level of `main_exposure` (with the
+  adjustment variables named in a footnote); otherwise it contains all model
+  terms grouped by variable. Each cell shows the effect measure and its 95\%
+  confidence interval pooled across imputations using Rubin's rules.
 }
 \description{
 This function takes a pooled model object from the `mice` package and creates a
@@ -58,62 +62,31 @@ formats the results into a clean HTML table using `knitr::kable()` and
 less than 0.001 shown as "<0.001".
 }
 \examples{
-\dontrun{
-# Load required packages for the example
-library(mice)
-library(dplyr)
-library(survey)
-library(NHANES)
+\donttest{
+data(nhanes_mortality, package = "svyTable1")
+dat <- nhanes_mortality
+dat$htn01 <- as.numeric(dat$htn == "Yes")
+dat <- dat[, c("htn01", "sex", "age", "smoking", "psu", "strata", "survey_weight")]
 
-# --- 1. Data Preparation ---
-# We'll prepare a clean analytic dataset from the raw NHANES data.
-# Note: We convert the outcome 'Obese' to a numeric 0/1 variable for svyglm.
-data(NHANESraw, package = "NHANES")
-nhanes_analytic <- NHANESraw \%>\%
-  dplyr::filter(Age >= 20 & WTMEC2YR > 0) \%>\%
-  mutate(
-    Obese_numeric = ifelse(BMI >= 30, 1, 0),
-    AgeCat = cut(Age, breaks = c(19, 39, 59, 80), labels = c("20-39", "40-59", "60-80")),
-    Smoke100 = factor(Smoke100, levels = c("No", "Yes"))
-  ) \%>\%
-  select(Obese_numeric, AgeCat, Smoke100, Education, SDMVPSU, SDMVSTRA, WTMEC2YR)
+# Induce missingness, then multiply impute (small m for a fast example only;
+# for a real analysis use m >= 20 and check convergence).
+set.seed(1)
+dat$age[sample(nrow(dat), 200)] <- NA
+imp <- mice::mice(dat, m = 2, maxit = 2, printFlag = FALSE, seed = 1)
 
-# --- 2. Perform Imputation and Pooled Analysis ---
-# Set survey option to handle lonely PSUs, a common issue with NHANES data.
-options(survey.lonely.psu = "adjust")
+# Fit a survey-weighted model in each imputed dataset, then pool (Rubin's rules).
+fits <- with(imp, survey::svyglm(
+  htn01 ~ sex + age + smoking,
+  design = survey::svydesign(id = ~psu, strata = ~strata,
+                             weights = ~survey_weight, nest = TRUE,
+                             data = data.frame(mget(ls()))),
+  family = quasibinomial()
+))
+pooled <- mice::pool(fits)
 
-# Impute the analytic dataset
-imputed_data <- mice(nhanes_analytic, m = 2, maxit = 2, seed = 123, printFlag = FALSE)
-
-# Use with() to run a survey-weighted GLM on each imputed dataset
-fit_imputed <- with(imputed_data,
-                    svyglm(Obese_numeric ~ Smoke100 + AgeCat + Education,
-                           design = svydesign(id = ~SDMVPSU, strata = ~SDMVSTRA,
-                                              weights = ~WTMEC2YR, nest = TRUE, data = .data),
-                           family = quasibinomial())
-                    )
-
-# Pool the results from all models into a single 'mipo' object
-pooled_results <- pool(fit_imputed)
-
-# --- 3. Generate Tables with svypooled ---
-# Example A: Create a "fallacy-safe" table (default)
-svypooled(
- pooled_model = pooled_results,
- main_exposure = "Smoke100",
- adj_var_names = c("AgeCat", "Education"),
- measure = "OR",
- title = "Adjusted Odds of Obesity (Fallacy-Safe)"
-)
-
-# Example B: Create a full table with all variables
-svypooled(
- pooled_model = pooled_results,
- main_exposure = "Smoke100",
- adj_var_names = c("AgeCat", "Education"),
- measure = "OR",
- title = "Adjusted Odds of Obesity (Full Table for Appendix)",
- fallacy_safe = FALSE
-)
+# Fallacy-safe table: shows only the exposure; covariates go in a footnote.
+svypooled(pooled, main_exposure = "sex",
+          adj_var_names = c("age", "smoking"), measure = "OR",
+          title = "Adjusted odds of hypertension")
 }
 }

@@ -47,7 +47,10 @@
 #' before splitting. If this fails, the user can manually provide the
 #' \code{design_ids}, \code{design_weights}, and \code{design_strata} arguments.
 #'
-#' @return A \code{ggplot} object showing the coefficient trend over time.
+#' @return A \code{ggplot} object. The y-axis is the estimated log hazard ratio
+#'   for \code{var_to_test} within each follow-up interval, plotted against time;
+#'   a roughly flat trend supports the proportional-hazards (constant-effect)
+#'   assumption. This is a visual diagnostic, not a formal hypothesis test.
 #'
 #' @importFrom survey svycoxph svydesign
 #' @importFrom survival survSplit
@@ -59,52 +62,25 @@
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' # --- 1. Load data and create a design ---
-#' library(survey)
-#' library(dplyr)
+#' \donttest{
 #' data(nhanes_mortality, package = "svyTable1")
 #'
-#' # Create a base design
-#' analytic_design <- svydesign(
-#'   strata = ~strata,
-#'   id = ~psu,
-#'   weights = ~survey_weight,
-#'   data = nhanes_mortality,
-#'   nest = TRUE
+#' design <- survey::svydesign(
+#'   id = ~psu, strata = ~strata, weights = ~survey_weight,
+#'   nest = TRUE, data = nhanes_mortality
 #' )
 #'
-#' # Prepare data (filter to >0 time)
-#' data_clean <- analytic_design$variables %>%
-#'   dplyr::filter(stime > 0) %>%
-#'   mutate(caff_bin = ifelse(caff == "No consumption", "No", "Yes"))
-#'
-#' # Create final design object
-#' final_design <- svydesign(
-#'   strata = ~strata,
-#'   id = ~psu,
-#'   weights = ~survey_weight,
-#'   data = data_clean,
-#'   nest = TRUE
-#' )
-#'
-#' # --- Example 1: Standard Usage ---
+#' # Visual check of the constant-effect (proportional hazards) assumption for
+#' # 'age': a roughly flat trend across follow-up intervals supports it.
 #' svycoxph_CE(
-#'   formula_rhs = "caff_bin + age",
-#'   design = final_design,
+#'   formula_rhs = "sex + age",
+#'   design = design,
 #'   var_to_test = "age",
 #'   time_var = "stime",
-#'   status_var = "status"
-#' )
-#'
-#' # --- Example 2: Manual Safety Valve (if automatic extraction fails) ---
-#' svycoxph_CE(
-#'   formula_rhs = "caff_bin + age",
-#'   design = final_design,
-#'   var_to_test = "caff_binYes", # Note: Check exact coef name
-#'   design_ids = ~psu,
-#'   design_weights = ~survey_weight,
-#'   design_strata = ~strata
+#'   status_var = "status",
+#'   n_intervals = 3,
+#'   print_main_model = FALSE,
+#'   print_split_summary = FALSE
 #' )
 #' }
 
