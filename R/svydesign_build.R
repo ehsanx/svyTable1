@@ -108,6 +108,10 @@ svydesign_build <- function(data, ids, weights, strata = NULL,
     stop("The weights column '", weights, "' contains negative values. ",
          "Survey weights must be non-negative.", call. = FALSE)
   }
+  if (sum(w) <= 0) {
+    stop("The weights column '", weights, "' sums to zero (all weights are 0); ",
+         "the design would be degenerate.", call. = FALSE)
+  }
 
   # --- 2. Build the design on the FULL sample ---
   ids_f    <- stats::as.formula(paste0("~", ids))
@@ -119,6 +123,7 @@ svydesign_build <- function(data, ids, weights, strata = NULL,
   n_full <- nrow(data)
 
   # --- 3. Optional subpopulation via subset (correct for SEs) ---
+  analysis_data <- data   # rows that remain in the (possibly subset) design
   if (!is.null(subpop)) {
     if (!is.character(subpop) || length(subpop) != 1) {
       stop("`subpop` must be a single character string giving a logical ",
@@ -137,24 +142,26 @@ svydesign_build <- function(data, ids, weights, strata = NULL,
     }
     keep[is.na(keep)] <- FALSE
     design <- design[which(keep), ]
+    analysis_data <- data[keep, , drop = FALSE]
     if (verbose) {
       message(sprintf(
-        "Subpopulation: %d of %d rows retained via subset() (design structure preserved for correct SEs).",
+        "Subpopulation: %d of %d rows retained by subsetting the design (structure preserved for correct SEs).",
         sum(keep), n_full))
     }
   } else if (verbose) {
     message(sprintf("Survey design built on %d rows.", n_full))
   }
 
-  # --- 4. Lonely-PSU advisory (does not change global options) ---
-  if (verbose && !is.null(strata) && !identical(ids, "0")) {
-    psu_per_stratum <- tapply(data[[ids]], data[[strata]],
+  # --- 4. Lonely-PSU advisory, on the ANALYSED rows (does not change options) ---
+  if (verbose && !is.null(strata) && !identical(ids, "0") &&
+      nrow(analysis_data) > 0) {
+    psu_per_stratum <- tapply(analysis_data[[ids]], analysis_data[[strata]],
                               function(x) length(unique(x)))
     n_lonely <- sum(psu_per_stratum < 2, na.rm = TRUE)
     if (n_lonely > 0) {
       message(sprintf(
-        "Note: %d stratum/strata contain a single PSU. Variance estimation may fail; consider options(survey.lonely.psu = \"adjust\").",
-        n_lonely))
+        "Note: %d stratum/strata contain a single PSU%s. Variance estimation may fail; consider options(survey.lonely.psu = \"adjust\").",
+        n_lonely, if (!is.null(subpop)) " in this subpopulation" else ""))
     }
   }
 

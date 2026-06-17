@@ -38,6 +38,10 @@ test_that("svydesign_build validates its inputs", {
   expect_error(svydesign_build(d_na, ids = "psu", weights = "survey_weight"),
                "missing")
 
+  d_zero <- d; d_zero$survey_weight <- 0
+  expect_error(svydesign_build(d_zero, ids = "psu", weights = "survey_weight"),
+               "zero")
+
   expect_error(
     svydesign_build(d, ids = "psu", strata = "strata",
                     weights = "survey_weight", subpop = "not_a_col == 1"),
