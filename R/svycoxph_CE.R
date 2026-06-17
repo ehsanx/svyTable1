@@ -156,7 +156,7 @@ svycoxph_CE <- function(formula_rhs,
     if(length(ids) == nrow(data_full)) ids <- ids[data_full[[time_var]] > 0]
     data_clean$internal_ids_auto <- ids
   } else {
-    data_clean$internal_ids_auto <- 1:nrow(data_clean)
+    data_clean$internal_ids_auto <- seq_len(nrow(data_clean))
   }
 
   if(!is.null(design$strata) && length(design$strata) > 0) {
@@ -209,7 +209,7 @@ svycoxph_CE <- function(formula_rhs,
   time_intervals <- c(0, cuts, max(split_data[[time_var]]))
   loop_formula <- as.formula(paste0("Surv(tstart, ", time_var, ", ", status_var, ") ~ ", formula_rhs))
 
-  for (i in 1:n_intervals) {
+  for (i in seq_len(n_intervals)) {
     fit <- tryCatch({
       # Subset the design for the specific time group
       d_sub <- suppressMessages(

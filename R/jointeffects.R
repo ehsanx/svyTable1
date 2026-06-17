@@ -133,7 +133,7 @@ jointeffects <- function(interaction_model,
   results <- list()
 
   # --- 4. Loop through each combination ---
-  for (i in 1:nrow(all_combinations)) {
+  for (i in seq_len(nrow(all_combinations))) {
     lvl1 <- all_combinations$Level1[i]
     lvl2 <- all_combinations$Level2[i]
 

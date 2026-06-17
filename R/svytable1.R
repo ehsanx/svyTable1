@@ -306,7 +306,7 @@ svytable1 <- function(design, strata_var, table_vars,
         means_by_strata_w <- svyby(var_formula, strata_formula, design, svymean, na.rm = TRUE)
         vars_by_strata_w <- svyby(var_formula, strata_formula, design, svyvar, na.rm = TRUE)
 
-        for(i in 1:nrow(means_by_strata_w)){
+        for(i in seq_len(nrow(means_by_strata_w))){
           s_lvl <- as.character(means_by_strata_w[i, 1])
           mean_val <- means_by_strata_w[i, 2]
           sd_val <- sqrt(vars_by_strata_w[i, 2])
@@ -353,7 +353,7 @@ svytable1 <- function(design, strata_var, table_vars,
 
         missing_by_strata <- svyby(~is_missing, strata_formula, design_temp, svymean, na.rm = TRUE)
 
-        for (i in 1:nrow(missing_by_strata)) {
+        for (i in seq_len(nrow(missing_by_strata)) ) {
           s_lvl <- as.character(missing_by_strata[i, 1])
           uw_n_strata_missing <- sum(is.na(current_var_vector[design$variables[[strata_var]] == s_lvl]))
           missing_row[[s_lvl]] <- sprintf("%s (%.1f%%)", format_num(uw_n_strata_missing, FALSE), missing_by_strata[i, 2] * 100)
