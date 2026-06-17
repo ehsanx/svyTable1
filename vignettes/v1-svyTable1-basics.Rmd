@@ -128,7 +128,7 @@ Federal statistical agencies discourage reporting proportions that are unstable 
 
 - A companion metrics table showing which estimates failed reliability standards.
 
-These checks follow NCHS guidance for the evaluation of proportions in complex surveys [@nchs_reliability_estimates].
+These checks follow NCHS guidance for the evaluation of proportions in complex surveys [@nhanes_reliability_estimates].
 
 ```{r rel}
 results_list <- svytable1(

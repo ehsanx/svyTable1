@@ -1,0 +1,177 @@
+---
+title: "Getting Started: An SPPH 604 Workflow"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting Started: An SPPH 604 Workflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+bibliography: references.bib
+link-citations: yes
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+This vignette walks through a complete complex-survey analysis with `svyTable1`,
+in the order you would tackle a [SPPH 604 / EpiMethods](https://ehsanx.github.io/EpiMethods/)
+final project: build the design, describe the sample, fit and check a model,
+probe an interaction, and look at survival. Every step uses the bundled
+`nhanes_mortality` dataset (a processed NHANES cohort of diabetic adults), so the
+whole vignette runs with no downloads.
+
+```{r packages, message = FALSE, warning = FALSE}
+library(svyTable1)
+library(survey)
+library(knitr)
+
+options(survey.lonely.psu = "adjust")  # required for correct NHANES-style SEs
+```
+
+## 1. Build the survey design
+
+The single most consequential mistake in survey analysis is to filter the data
+to a subgroup *before* building the design -- that throws away the information
+needed for correct subgroup standard errors. `svydesign_build()` validates your
+inputs and, when you want a subpopulation, does it the right way (by subsetting
+the design).
+
+```{r design}
+data(nhanes_mortality)
+nhanes_mortality$htn01 <- as.numeric(nhanes_mortality$htn == "Yes")
+
+design <- svydesign_build(
+  data = nhanes_mortality,
+  ids = "psu", strata = "strata", weights = "survey_weight"
+)
+```
+
+## 2. Describe the sample (Table 1)
+
+`svytable1()` builds a survey-weighted "Table 1". In the default `"mixed"` mode
+each categorical cell shows the **unweighted count** (the real sample size, which
+governs precision [@seidenberg2023preferred]) together with the **weighted
+percentage** (the population estimate).
+
+```{r table1}
+tab1 <- svytable1(
+  design = design,
+  strata_var = "htn",
+  table_vars = c("age", "sex", "race", "smoking", "bmi.cat")
+)
+knitr::kable(tab1, caption = "Table 1, stratified by hypertension status")
+```
+
+> **How to read this.** A weighted percentage describes the *population*; the
+> unweighted *n* tells you how much data is behind it. With `reliability_checks
+> = TRUE`, cells that fail the NCHS reliability rules are replaced by `*`
+> [@nhanes_reliability_estimates].
+
+This table drops straight into a report with `knitr::kable()` (HTML or, when you
+knit to Word, a native Word table) -- no extra packages required.
+
+## 3. Fit a model and check it
+
+```{r model}
+fit <- svyglm(htn01 ~ age + sex + smoking,
+              design = design, family = quasibinomial())
+```
+
+**Coefficient reliability** with `svydiag()`:
+
+```{r diag}
+knitr::kable(svydiag(fit), digits = 3,
+             caption = "Coefficient reliability diagnostics")
+```
+
+**Goodness of fit** with `svygof()` (Archer-Lemeshow; @archer2006goodness):
+
+```{r gof}
+knitr::kable(svygof(fit, design),
+             caption = "Archer-Lemeshow goodness-of-fit test")
+```
+
+> **How to read this.** A *non-significant* goodness-of-fit p-value is consistent
+> with adequate fit -- it does **not** prove the model is correctly specified.
+
+**Discrimination** with `svyAUC()` (needs a replicate-weights design; the CI is
+built on the logit scale so it stays in `[0, 1]`):
+
+```{r auc}
+rep_design <- as.svrepdesign(design)
+fit_rep <- svyglm(htn01 ~ age + sex + smoking,
+                  design = rep_design, family = quasibinomial())
+knitr::kable(svyAUC(fit_rep, rep_design), digits = 3,
+             caption = "Design-correct AUC")
+```
+
+> **How to read this.** AUC measures *discrimination* (ranking), not calibration
+> or causal validity. An AUC near 0.5 means little discriminatory value.
+
+## 4. Probe an interaction
+
+Does the association between insulin use and hypertension differ by sex? Fit an
+interaction model and summarise the additive interaction (RERI, AP, S):
+
+```{r interaction}
+int_fit <- svyglm(htn01 ~ sex * insulin + age,
+                  design = design, family = quasibinomial())
+
+add_int <- addintlist(int_fit, factor1_name = "sex", factor2_name = "insulin",
+                      measures = "all", ci_method = "mover")
+knitr::kable(add_int, digits = 3,
+             caption = "Additive interaction (MOVER confidence intervals)")
+```
+
+> **How to read this.** RERI/AP/S are risk-ratio-scale measures. The `Scale`
+> column shows they were computed here from **odds ratios**, which approximate
+> risk ratios only when the outcome is rare; interpret with care for common
+> outcomes [@knol2012recommendations]. We used `ci_method = "mover"` for the
+> better-coverage RERI interval (@archer2006goodness gives background on survey
+> diagnostics; the MOVER method is from Zou, 2008).
+
+`reportint()` assembles joint, stratum-specific, additive, and multiplicative
+panels into a single report; `plotint()` visualises interactions involving a
+continuous moderator. See `vignette("v3-interaction-analysis")`.
+
+## 5. Survival analysis
+
+Survey-weighted Kaplan-Meier curves with a number-at-risk table
+(`se = FALSE` skips the slower confidence bands):
+
+```{r km, fig.width = 7, fig.height = 5}
+library(survival)
+
+km <- svykmplot(
+  Surv(stime, status) ~ caff,
+  design = subset(design, sex == "Female"),
+  time_unit = "days",
+  time_breaks = seq(0, 240, by = 60),
+  show_pval = TRUE,
+  se = FALSE
+)
+km$plot
+```
+
+The constant-effect (proportional-hazards) assumption for a Cox model can be
+checked visually with `svycoxph_CE()`; the multiply-imputed version is
+`svycoxph_CE_mi()`. See `vignette("v4-survival-analysis")`.
+
+## Where to go next
+
+| Task | Function(s) | Vignette |
+|------|-------------|----------|
+| Descriptive tables | `svytable1()` | `v1-svyTable1-basics` |
+| Model diagnostics | `svydiag()`, `svygof()`, `svyAUC()` | `v2-model-diagnostics` |
+| Interaction analysis | `addintlist()`, `reportint()`, `plotint()` | `v3-interaction-analysis` |
+| Survival analysis | `svykmplot()`, `svycoxph_CE()` | `v4-survival-analysis` |
+| Multiple imputation | `svypooled()` | `v5-multiple-imputation` |
+
+See `?svyTable1` for the full function index, and the
+[EpiMethods book](https://ehsanx.github.io/EpiMethods/) for the underlying
+methods.
+
+## References
