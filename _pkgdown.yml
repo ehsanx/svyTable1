@@ -1,4 +1,42 @@
-url: https://ehsanx.github.io/svyTable1
+url: https://ehsanx.github.io/svyTable1/
 template:
   bootstrap: 5
 
+reference:
+- title: Survey design
+  desc: Build and validate a complex-survey design.
+  contents:
+  - svydesign_build
+- title: Descriptive tables
+  desc: Survey-weighted "Table 1" summaries.
+  contents:
+  - svytable1
+- title: Model diagnostics
+  desc: Assess reliability, fit, and discrimination of survey regression models.
+  contents:
+  - svydiag
+  - svygof
+  - svyAUC
+- title: Interaction analysis
+  desc: Additive interaction, joint and simple effects, and interaction reports.
+  contents:
+  - addint
+  - addintlist
+  - jointeffects
+  - inteffects
+  - reportint
+  - plotint
+- title: Survival analysis
+  desc: Survey-weighted Kaplan-Meier plots and proportional-hazards diagnostics.
+  contents:
+  - svykmplot
+  - svycoxph_CE
+  - svycoxph_CE_mi
+- title: Multiple imputation
+  desc: Pooled, fallacy-safe regression tables.
+  contents:
+  - svypooled
+- title: Data and helpers
+  contents:
+  - nhanes_mortality
+  - "%>%"
