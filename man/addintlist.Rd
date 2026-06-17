@@ -11,7 +11,8 @@ addintlist(
   measures = "all",
   conf.level = 0.95,
   digits = 3,
-  verbose = FALSE
+  verbose = FALSE,
+  ci_method = c("delta", "mover")
 )
 }
 \arguments{
@@ -34,6 +35,9 @@ CIs in the final table. Default is 3. (Set to NULL for no rounding).}
 
 \item{verbose}{Logical. If `TRUE`, prints a progress message for each
 factor-level combination as it is calculated. Defaults to `FALSE`.}
+
+\item{ci_method}{Confidence-interval method for RERI passed to
+\code{\link{addint}}: `"delta"` (default) or `"mover"` (Zou 2008).}
 }
 \value{
 A `tibble` (data frame) summarizing the additive interaction results.

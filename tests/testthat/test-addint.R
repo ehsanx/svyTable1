@@ -64,6 +64,36 @@ test_that("addint warns and returns NULL when a required coefficient is missing"
   expect_null(res)
 })
 
+test_that("addint MOVER interval for RERI is valid and asymmetric (Zou 2008)", {
+  beta <- c(A = 0.4, B = 0.3, `A:B` = 0.5)
+  V <- matrix(c(0.02, 0.005, 0.004,
+                0.005, 0.03, 0.006,
+                0.004, 0.006, 0.05), 3, 3)
+  dimnames(V) <- list(names(beta), names(beta))
+  m <- make_mock(beta, V)
+  cn <- list(exp1_coef = "A", exp2_coef = "B", inter_coef = "A:B")
+
+  delta <- addint(m, type = "interaction", coef_names = cn, measures = "RERI",
+                  ci_method = "delta")$RERI
+  mover <- addint(m, type = "interaction", coef_names = cn, measures = "RERI",
+                  ci_method = "mover")$RERI
+
+  # Same point estimate; MOVER interval differs from the symmetric Wald one.
+  expect_equal(unname(mover[["RERI_Estimate"]]),
+               unname(delta[["RERI_Estimate"]]), tolerance = 1e-10)
+  expect_lt(mover[["RERI_CI95_low"]], mover[["RERI_Estimate"]])
+  expect_gt(mover[["RERI_CI95_upp"]], mover[["RERI_Estimate"]])
+
+  # Asymmetric around the estimate (unlike the delta interval).
+  upper_half <- mover[["RERI_CI95_upp"]] - mover[["RERI_Estimate"]]
+  lower_half <- mover[["RERI_Estimate"]] - mover[["RERI_CI95_low"]]
+  expect_false(isTRUE(all.equal(upper_half, lower_half)))
+
+  # Pinned values, cross-checked against the interactionR package.
+  expect_equal(unname(mover[["RERI_CI95_low"]]), 0.3191, tolerance = 1e-3)
+  expect_equal(unname(mover[["RERI_CI95_upp"]]), 4.4499, tolerance = 1e-3)
+})
+
 test_that("addint validates the measures argument", {
   beta <- c(A = 0.4, B = 0.3, `A:B` = 0.5)
   V <- diag(3)

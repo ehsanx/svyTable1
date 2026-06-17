@@ -27,6 +27,8 @@
 #'   CIs in the final table. Default is 3. (Set to NULL for no rounding).
 #' @param verbose Logical. If `TRUE`, prints a progress message for each
 #'   factor-level combination as it is calculated. Defaults to `FALSE`.
+#' @param ci_method Confidence-interval method for RERI passed to
+#'   \code{\link{addint}}: `"delta"` (default) or `"mover"` (Zou 2008).
 #'
 #' @return A `tibble` (data frame) summarizing the additive interaction results.
 #'   Columns include:
@@ -96,7 +98,10 @@ addintlist <- function(model,
                        measures = "all",
                        conf.level = 0.95,
                        digits = 3,
-                       verbose = FALSE) {
+                       verbose = FALSE,
+                       ci_method = c("delta", "mover")) {
+
+  ci_method <- match.arg(ci_method)
 
   # Check if the core calculation function 'addint' exists
   if (!exists("addint") || !is.function(addint)) {
@@ -227,7 +232,8 @@ addintlist <- function(model,
         type = "interaction",
         coef_names = current_coef_names_list,
         measures = measures_to_calc, # Use the validated list
-        conf.level = conf.level
+        conf.level = conf.level,
+        ci_method = ci_method
       )
 
       # --- Process results into a flat tibble for this combination ---

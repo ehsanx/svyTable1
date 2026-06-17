@@ -9,7 +9,8 @@ addint(
   type = c("joint", "interaction"),
   coef_names,
   measures = "all",
-  conf.level = 0.95
+  conf.level = 0.95,
+  ci_method = c("delta", "mover")
 )
 }
 \arguments{
@@ -30,6 +31,13 @@ Coefficient names must match `names(coef(model))` exactly.}
 Options: `"RERI"`, `"AP"`, `"S"`, or `"all"`. Default is `"all"`.}
 
 \item{conf.level}{Confidence level for the interval (default 0.95).}
+
+\item{ci_method}{Character string giving the confidence-interval method for
+RERI: `"delta"` (default) for the symmetric delta-method Wald interval, or
+`"mover"` for the MOVER interval of Zou (2008)
+<doi:10.1093/aje/kwn104>, which recovers the variance from the component
+risk ratios' confidence limits and generally has better coverage. The AP and
+S intervals always use the delta method.}
 }
 \value{
 A list containing named vectors for each requested measure.
@@ -58,6 +66,9 @@ AP = RERI / RR11
 S = (RR11 - 1) / ((RR10 - 1) + (RR01 - 1))
 
 Confidence intervals for S are calculated on the log scale and then exponentiated.
+By default the RERI interval uses the symmetric delta-method (Wald) interval;
+set \code{ci_method = "mover"} for the MOVER interval of Zou (2008)
+<doi:10.1093/aje/kwn104>, which generally has better coverage.
 
 \strong{Scale caveat:} these measures are defined on the risk-ratio scale.
 When the model supplies odds ratios (logistic) or hazard ratios (Cox), RERI,

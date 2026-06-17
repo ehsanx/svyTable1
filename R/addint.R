@@ -21,6 +21,9 @@
 #' S = (RR11 - 1) / ((RR10 - 1) + (RR01 - 1))
 #'
 #' Confidence intervals for S are calculated on the log scale and then exponentiated.
+#' By default the RERI interval uses the symmetric delta-method (Wald) interval;
+#' set \code{ci_method = "mover"} for the MOVER interval of Zou (2008)
+#' <doi:10.1093/aje/kwn104>, which generally has better coverage.
 #'
 #' \strong{Scale caveat:} these measures are defined on the risk-ratio scale.
 #' When the model supplies odds ratios (logistic) or hazard ratios (Cox), RERI,
@@ -44,13 +47,19 @@
 #' @param measures A character vector specifying which measures to calculate.
 #'   Options: `"RERI"`, `"AP"`, `"S"`, or `"all"`. Default is `"all"`.
 #' @param conf.level Confidence level for the interval (default 0.95).
+#' @param ci_method Character string giving the confidence-interval method for
+#'   RERI: `"delta"` (default) for the symmetric delta-method Wald interval, or
+#'   `"mover"` for the MOVER interval of Zou (2008)
+#'   <doi:10.1093/aje/kwn104>, which recovers the variance from the component
+#'   risk ratios' confidence limits and generally has better coverage. The AP and
+#'   S intervals always use the delta method.
 #'
 #' @return A list containing named vectors for each requested measure.
 #'   Each vector includes Estimate, SE (SE for RERI and AP, SE_log for S),
 #'   LowerCI, UpperCI. Returns `NULL` or a partial list with `NA` values if
 #'   calculation fails (e.g., missing coefficients, delta method error).
 #'
-#' @importFrom stats coef vcov qnorm pnorm na.omit
+#' @importFrom stats coef vcov qnorm pnorm na.omit cov2cor
 #' @importFrom msm deltamethod
 #'
 #' @export
@@ -89,9 +98,11 @@ addint <- function(model,
                    type = c("joint", "interaction"),
                    coef_names,
                    measures = "all",
-                   conf.level = 0.95) {
+                   conf.level = 0.95,
+                   ci_method = c("delta", "mover")) {
 
   type <- match.arg(type)
+  ci_method <- match.arg(ci_method)
 
   if (!requireNamespace("msm", quietly = TRUE)) {
     stop("Package 'msm' needed for this function to work. Please install it.", call. = FALSE)
@@ -224,6 +235,22 @@ addint <- function(model,
         lower_ci <- est_reri - z * se_reri
         upper_ci <- est_reri + z * se_reri
       }
+      # Optionally replace the symmetric Wald interval with the MOVER interval
+      # (Zou 2008), which recovers the variance from the component risk ratios'
+      # confidence limits and generally has better coverage for RERI.
+      if (identical(ci_method, "mover")) {
+        mover <- tryCatch(
+          .reri_mover_ci(selected_beta, selected_V, type, z, est_reri),
+          error = function(e) {
+            warning("MOVER interval failed for RERI; keeping the Wald interval: ",
+                    e$message)
+            NULL
+          })
+        if (!is.null(mover) && all(is.finite(mover))) {
+          lower_ci <- mover[1]
+          upper_ci <- mover[2]
+        }
+      }
     }
     results_list$RERI <- c(Estimate = est_reri, SE = se_reri, LowerCI = lower_ci, UpperCI = upper_ci)
     names(results_list$RERI) <- c("RERI_Estimate", "RERI_SE", paste0("RERI_CI", floor(conf.level*100), "_low"), paste0("RERI_CI", floor(conf.level*100), "_upp"))
@@ -288,4 +315,46 @@ addint <- function(model,
   }
 
   return(results_list)
+}
+
+# Internal: MOVER (Method Of Variance Estimates Recovery) confidence interval for
+# RERI = RR11 - RR10 - RR01 + 1, following Zou (2008) <doi:10.1093/aje/kwn104>.
+# `selected_beta`/`selected_V` are the three model coefficients and their 3x3
+# variance-covariance matrix, in the order implied by `type`. Returns
+# c(lower, upper). Not exported.
+.reri_mover_ci <- function(selected_beta, selected_V, type, z, est_reri) {
+  # Contrast matrix mapping the coefficients to (log RR11, log RR10, log RR01).
+  if (identical(type, "interaction")) {
+    # selected_beta = (bA, bB, bAB): RR10 = exp(bA), RR01 = exp(bB),
+    # RR11 = exp(bA + bB + bAB).
+    C <- rbind(c(1, 1, 1), c(1, 0, 0), c(0, 1, 0))
+  } else {
+    # joint: selected_beta = (b10, b01, b11): RR10 = exp(b10), RR01 = exp(b01),
+    # RR11 = exp(b11).
+    C <- rbind(c(0, 0, 1), c(1, 0, 0), c(0, 1, 0))
+  }
+
+  log_rr <- as.numeric(C %*% as.numeric(selected_beta))
+  Sigma  <- C %*% selected_V %*% t(C)
+  se     <- sqrt(diag(Sigma))
+  if (any(!is.finite(se)) || any(se <= 0)) return(NULL)
+
+  R <- stats::cov2cor(Sigma)
+  r12 <- R[1, 2]; r13 <- R[1, 3]; r23 <- R[2, 3]   # (RR11,RR10),(RR11,RR01),(RR10,RR01)
+
+  theta <- exp(log_rr)                              # RR11, RR10, RR01
+  l <- exp(log_rr - z * se)
+  u <- exp(log_rr + z * se)
+
+  # RERI = theta1 - theta2 - theta3 + 1 (a1 = +1, a2 = a3 = -1).
+  var_lower <- (theta[1] - l[1])^2 + (u[2] - theta[2])^2 + (u[3] - theta[3])^2 -
+    2 * r12 * (theta[1] - l[1]) * (u[2] - theta[2]) -
+    2 * r13 * (theta[1] - l[1]) * (u[3] - theta[3]) +
+    2 * r23 * (u[2] - theta[2]) * (u[3] - theta[3])
+  var_upper <- (u[1] - theta[1])^2 + (theta[2] - l[2])^2 + (theta[3] - l[3])^2 -
+    2 * r12 * (u[1] - theta[1]) * (theta[2] - l[2]) -
+    2 * r13 * (u[1] - theta[1]) * (theta[3] - l[3]) +
+    2 * r23 * (theta[2] - l[2]) * (theta[3] - l[3])
+
+  c(est_reri - sqrt(max(0, var_lower)), est_reri + sqrt(max(0, var_upper)))
 }
